@@ -28,7 +28,7 @@ public sealed partial class MainWindow : Window
         if (AppWindow.Presenter is OverlappedPresenter presenter) { presenter.IsResizable=false; presenter.IsMaximizable=false; presenter.IsMinimizable=false; presenter.IsAlwaysOnTop=true; }
         var hwnd=WinRT.Interop.WindowNative.GetWindowHandle(this);
         double scale=GetDpiForWindow(hwnd)/96d;
-        AppWindow.Resize(new SizeInt32((int)(520*scale),(int)(620*scale)));
+        AppWindow.Resize(new SizeInt32((int)(520*scale),(int)(645*scale)));
         preview=args.Contains("--capture");
         arabic=args.Contains("--arabic");
         if(args.Contains("--dark")) Root.RequestedTheme=ElementTheme.Dark;
@@ -62,10 +62,8 @@ public sealed partial class MainWindow : Window
         Root.FlowDirection=arabic?FlowDirection.RightToLeft:FlowDirection.LeftToRight;
         BatteryHeader.Text=T("MY BATTERY","البطارية");SettingsHeader.Text=T("QUICK SETTINGS","الإعدادات السريعة");
         BatteryLink.Content=T("Battery details","تفاصيل البطارية"); AllLink.Content=T("All settings","جميع الإعدادات");
-        CameraLabel.Text=T("Camera","الكاميرا"); MicLabel.Text=T("Mute","كتم"); ConservationLabel.Text=T("Conserve","حفاظ");RapidLabel.Text=T("Rapid","سريع");TouchpadLabel.Text=T("Lock","قفل");
-        CameraNote.Text=T("Camera privacy uses the laptop's physical shutter.","خصوصية الكاميرا عبر المفتاح الفعلي في الجهاز.");
+        FnLabel.Text=T("Fn Lock","قفل Fn"); UsbLabel.Text=T("Always-on USB","طاقة USB الدائمة"); MicLabel.Text=T("Mute","كتم"); ConservationLabel.Text=T("Conserve","حفاظ");RapidLabel.Text=T("Rapid","سريع");TouchpadLabel.Text=T("Lock","قفل");
         WarrantyLink.Content=T("Warranty options","خيارات الضمان");LanguageButton.Content=arabic?"English":"العربية";
-        ToolTipService.SetToolTip(Camera,T("Open camera privacy settings. Physical shutter cannot be toggled here.","فتح إعدادات خصوصية الكاميرا. لا يمكن تبديل المفتاح الفعلي هنا."));
         ToolTipService.SetToolTip(Microphone,T("Mute all active recording endpoints, including external microphones.","كتم جميع أجهزة التسجيل النشطة، بما فيها الميكروفونات الخارجية."));
         ToolTipService.SetToolTip(Conservation,T("Battery conservation. Mutually exclusive with rapid charge.","الحفاظ على البطارية. لا يعمل مع الشحن السريع في الوقت نفسه."));
         ToolTipService.SetToolTip(Rapid,T("Rapid charging. Mutually exclusive with conservation.","الشحن السريع. لا يعمل مع وضع الحفاظ في الوقت نفسه."));
@@ -81,6 +79,13 @@ public sealed partial class MainWindow : Window
         BatteryFill.Width=value.Percent.HasValue?Math.Max(0,390*value.Percent.Value/100d):0;
         PlugIcon.Visibility=value.Plugged?Visibility.Visible:Visibility.Collapsed;
         ChargeText.Text=T(value.Charging?"Charging":value.Plugged?"Plugged in, not charging":"On battery",value.Charging?"جارٍ الشحن":value.Plugged?"متصل بالطاقة، لا يشحن":"يعمل بالبطارية");
+        FnLock.IsEnabled=value.FnLocked.HasValue&&!preview;FnLock.IsChecked=value.FnLocked;
+        Usb.IsEnabled=value.UsbMode.HasValue&&!preview;Usb.IsChecked=value.UsbMode==2;
+        bool exactRates=value.AvailableHz?.Contains(60)==true&&value.AvailableHz.Contains(144);
+        RefreshRate.IsEnabled=exactRates&&!preview;RefreshRate.IsChecked=value.RefreshHz==144;
+        RefreshLabel.Text=value.RefreshHz.HasValue?$"{value.RefreshHz} Hz":"-- Hz";
+        ToolTipService.SetToolTip(RefreshRate,exactRates?T("Switch internal display between 60 and 144 Hz.","تبديل الشاشة الداخلية بين 60 و144 هرتز."):T("60 and 144 Hz are not both available. No unsupported display mode will be applied.","لا يتوفر الترددان 60 و144 هرتز معاً. لن يُفرض وضع شاشة غير مدعوم."));
+        ToolTipService.SetToolTip(Usb,T("Always-on USB can drain the battery. BIOS and firmware policies still apply.","قد تستنزف طاقة USB الدائمة البطارية. تظل سياسات BIOS والفيرموير سارية."));
         Microphone.IsEnabled=value.Muted.HasValue&&!preview;Microphone.IsChecked=value.Muted;
         Conservation.IsEnabled=Rapid.IsEnabled=value.Mode.HasValue&&!preview;
         Conservation.IsChecked=value.Mode==ChargeMode.Conservation;Rapid.IsChecked=value.Mode==ChargeMode.Rapid;
@@ -90,11 +95,14 @@ public sealed partial class MainWindow : Window
     async Task Run(Func<Task> action)
     {
         if(busy||preview||current==null)return;busy=true;
-        Microphone.IsEnabled=Conservation.IsEnabled=Rapid.IsEnabled=Touchpad.IsEnabled=false;
+        FnLock.IsEnabled=Usb.IsEnabled=RefreshRate.IsEnabled=Microphone.IsEnabled=Conservation.IsEnabled=Rapid.IsEnabled=Touchpad.IsEnabled=false;
         try {await action();Apply(await device.ReadAsync());}
         catch(Exception e){Apply(await device.ReadAsync());Status.Text=T("Not confirmed: ","لم يتم التأكيد: ")+e.Message;}
         finally{busy=false;}
     }
+    async void FnClick(object sender,RoutedEventArgs e)=>await Run(()=>device.SetFnAsync(!(current?.FnLocked??false)));
+    async void UsbClick(object sender,RoutedEventArgs e)=>await Run(()=>device.SetUsbAsync(current?.UsbMode!=2));
+    async void RefreshClick(object sender,RoutedEventArgs e)=>await Run(()=>device.SetRefreshAsync(current?.RefreshHz==144?60:144));
     async void MicClick(object sender,RoutedEventArgs e)=>await Run(()=>device.SetMicrophoneAsync(!(current?.Muted??false)));
     async void ConservationClick(object sender,RoutedEventArgs e)=>await Run(()=>device.SetModeAsync(current?.Mode==ChargeMode.Conservation?ChargeMode.Normal:ChargeMode.Conservation));
     async void RapidClick(object sender,RoutedEventArgs e)=>await Run(()=>device.SetModeAsync(current?.Mode==ChargeMode.Rapid?ChargeMode.Normal:ChargeMode.Rapid));
@@ -110,7 +118,6 @@ public sealed partial class MainWindow : Window
         await Run(()=>device.SetTouchpadAsync(!(current?.TouchpadLocked??false)));
     }
     static void Open(string url)=>Process.Start(new ProcessStartInfo(url){UseShellExecute=true});
-    void CameraSettings(object sender,RoutedEventArgs e)=>Open("ms-settings:privacy-webcam");
     void AllSettings(object sender,RoutedEventArgs e)=>Open("ms-settings:");
     void Warranty(object sender,RoutedEventArgs e)=>Open("https://pcsupport.lenovo.com/us/en/products/laptops-and-netbooks/legion-series/legion-5-15ith6h/82jh");
     async void BatteryDetails(object sender,RoutedEventArgs e)
@@ -123,7 +130,7 @@ public sealed partial class MainWindow : Window
     async Task Capture()
     {
         // Deterministic render fixture, clearly labelled as preview. Hardware services are never called.
-        Apply(new Hardware.DeviceState(60,true,false,ChargeMode.Conservation,false,false,"Visual fixture",[]));
+        Apply(new Hardware.DeviceState(60,true,false,ChargeMode.Conservation,false,false,"Visual fixture",[],true,2,144,[60,144]));
         await Task.Delay(2500);
         int index=Array.IndexOf(args,"--capture");string path=args[index+1];
         var bitmap=new Microsoft.UI.Xaml.Media.Imaging.RenderTargetBitmap();await bitmap.RenderAsync(Root);

@@ -6,7 +6,7 @@ using NAudio.CoreAudioApi;
 namespace FluentLegionToolbar.Hardware;
 // Protocol facts are documented in SOURCES.md. No Lenovo services are stopped or replaced.
 public enum ChargeMode { Normal, Conservation, Rapid }
-public sealed record DeviceState(int? Percent, bool Plugged, bool Charging, ChargeMode? Mode, bool? Muted, bool? TouchpadLocked, string Model, string[] Problems);
+public sealed record DeviceState(int? Percent, bool Plugged, bool Charging, ChargeMode? Mode, bool? Muted, bool? TouchpadLocked, string Model, string[] Problems, bool? FnLocked = null, int? UsbMode = null, int? RefreshHz = null, int[]? AvailableHz = null);
 public sealed class LegionDevice
 {
     [StructLayout(LayoutKind.Sequential)] struct PowerStatus { public byte AC, Flags, Percent, Reserved; public uint Life, FullLife; }
@@ -69,8 +69,23 @@ public sealed class LegionDevice
         try { mode=ReadMode(); } catch(Exception e) { errors.Add("Battery mode: "+e.Message); }
         try { if (Touchpad("IsSupportDisableTP") > 0) { int value=Touchpad("GetTPStatus"); if (value is not (0 or 1)) throw new InvalidOperationException("Unknown touchpad state"); locked=value==1; } } catch(Exception e) { errors.Add("Touchpad: "+e.Message); }
         try { muted=ReadMicrophone(); } catch(Exception e) { errors.Add("Microphone: "+e.Message); }
-        return new DeviceState(percent, plugged, charging, mode, muted, locked, model, errors.ToArray());
+        bool? fn=null;int? usb=null,hz=null;int[] rates=[];
+        try {uint settings=Exchange(2,0x831020E8);fn=(settings&512)!=0?(settings&1024)!=0:null;usb=(settings&64)!=0&&(settings&16384)!=0?((settings&128)==0?0:(settings&32768)!=0?2:1):null;}catch(Exception e){errors.Add("Fn / USB: "+e.Message);}
+        try {(hz,rates)=DisplayControl.Read();}catch(Exception e){errors.Add("Display: "+e.Message);}
+        return new DeviceState(percent, plugged, charging, mode, muted, locked, model, errors.ToArray(),fn,usb,hz,rates);
     });
+    public Task SetFnAsync(bool locked) => Task.Run(() => {
+        if((Exchange(2,0x831020E8)&512)==0)throw new NotSupportedException("Fn Lock not supported.");
+        Exchange(locked?14u:15u,0x831020E8);
+        if(((Exchange(2,0x831020E8)&1024)!=0)!=locked) throw new InvalidOperationException("Fn Lock state was not confirmed.");
+    });
+    public Task SetUsbAsync(bool enabled) => Task.Run(() => {
+        if((Exchange(2,0x831020E8)&0x4040)!=0x4040)throw new NotSupportedException("Always-on USB battery mode not supported.");
+        Exchange(enabled?10u:11u,0x831020E8);Exchange(enabled?19u:18u,0x831020E8);
+        uint raw=Exchange(2,0x831020E8);int mode=(raw&128)==0?0:(raw&32768)!=0?2:1;
+        if(mode!=(enabled?2:0))throw new InvalidOperationException("Always-on USB setting was not confirmed.");
+    });
+    public Task SetRefreshAsync(int hz) => Task.Run(()=>DisplayControl.Set(hz));
     public async Task SetModeAsync(ChargeMode next)
     {
         await gate.WaitAsync();
