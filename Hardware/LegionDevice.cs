@@ -49,7 +49,7 @@ public sealed class LegionDevice
     bool ReadMicrophone()
     {
         using var audio = new MMDeviceEnumerator();
-        using var endpoints = audio.EnumerateAudioEndPoints(DataFlow.Capture, NAudio.CoreAudioApi.DeviceState.Active);
+        var endpoints = audio.EnumerateAudioEndPoints(DataFlow.Capture, NAudio.CoreAudioApi.DeviceState.Active);
         if (endpoints.Count == 0) throw new InvalidOperationException("No active microphone endpoint.");
         bool muted = true;
         foreach (var device in endpoints) { using (device) muted &= device.AudioEndpointVolume.Mute; }
@@ -106,7 +106,7 @@ public sealed class LegionDevice
         if ((Touchpad("GetTPStatus")==1)!=locked) throw new InvalidOperationException("Touchpad state was not confirmed.");
     });
     public Task SetMicrophoneAsync(bool muted) => Task.Run(() => {
-        using var audio=new MMDeviceEnumerator(); using var endpoints=audio.EnumerateAudioEndPoints(DataFlow.Capture, NAudio.CoreAudioApi.DeviceState.Active);
+        using var audio=new MMDeviceEnumerator(); var endpoints=audio.EnumerateAudioEndPoints(DataFlow.Capture, NAudio.CoreAudioApi.DeviceState.Active);
         if(endpoints.Count==0) throw new InvalidOperationException("No active microphone.");
         foreach(var device in endpoints) { using(device) { device.AudioEndpointVolume.Mute=muted; if(device.AudioEndpointVolume.Mute!=muted) throw new InvalidOperationException("Microphone mute was not confirmed."); } }
     });
