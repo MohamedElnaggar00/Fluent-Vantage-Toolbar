@@ -2,4 +2,5 @@ bin/
 obj/
 out/
 *.png
+!legion-logo.png
 *.zip
