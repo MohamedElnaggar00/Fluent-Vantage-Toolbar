@@ -47,6 +47,7 @@ public sealed partial class MainWindow : Window
     UpdateNoticeWindow? updateNotice;
     bool flyoutVisible, showingFlyout, reorderMode, reordering;
     StackPanel? reorderRows;
+    int reorderPresses,reorderMoves,reorderReleases;
     int animationGeneration;
     Microsoft.UI.Xaml.Media.Animation.Storyboard? flyoutMotion;
     string view = "main";
@@ -191,7 +192,7 @@ public sealed partial class MainWindow : Window
     {
         reorderMode=true;await NavigateAsync("settings");Render();await geometryReady;
         if(body.Content is ScrollViewer scroll && reorderRows is {} rows) {
-            Root.UpdateLayout();
+            Activate();SetForegroundWindow(hwnd);Root.UpdateLayout();await Task.Delay(150);
             double offset=rows.TransformToVisual((UIElement)scroll.Content).TransformPoint(new Windows.Foundation.Point()).Y;
             scroll.ChangeView(null,Math.Max(0,offset-80),null,true);await Task.Delay(200);
             for(int pass=0;pass<2;pass++) {
@@ -205,7 +206,9 @@ public sealed partial class MainWindow : Window
                 SetCursorPos(rect.Left+(int)(start.X*scale),rect.Top+(int)(start.Y*scale));mouse_event(2,0,0,0,UIntPtr.Zero);await Task.Delay(120);
                 for(int step=1;step<=12;step++) {SetCursorPos(rect.Left+(int)((start.X+(end.X-start.X)*step/12)*scale),rect.Top+(int)((start.Y+(end.Y-start.Y)*step/12)*scale));await Task.Delay(25);}
                 mouse_event(4,0,0,0,UIntPtr.Zero);await Task.Delay(180);
-                if(settings.TileOrder.Count!=Tiles.Length || settings.TileOrder[pass==0?2:0]!=id)throw new InvalidOperationException("Actual pointer reorder did not move expected row");
+                await SaveImage(Path.Combine(dir,$"reorder-attempt-{pass}.png"));
+                File.AppendAllText(Path.Combine(dir,"reorder-input.txt"),$"pass={pass}; start={start}; end={end}; rect={rect.Left},{rect.Top}; pressed={reorderPresses}; moved={reorderMoves}; released={reorderReleases}; order={string.Join(",",settings.TileOrder)}\n");
+                if(settings.TileOrder.Count!=Tiles.Length || settings.TileOrder[pass==0?2:0]!=id){Close();throw new InvalidOperationException("Actual pointer reorder did not move expected row");}
                 await SaveImage(Path.Combine(dir,$"reorder-pointer-{pass}.png"));
             }
             string saved=System.Text.Json.JsonSerializer.Serialize(settings);var loaded=System.Text.Json.JsonSerializer.Deserialize<AppSettings>(saved)!;
@@ -952,14 +955,14 @@ public sealed partial class MainWindow : Window
             handle.ReleasePointerCaptures();
         }
         handle.PointerPressed+=(_,e)=>{
-            if(!reorderMode || !e.GetCurrentPoint(handle).Properties.IsLeftButtonPressed)return;
+            reorderPresses++;if(!reorderMode || !e.GetCurrentPoint(handle).Properties.IsLeftButtonPressed)return;
             dragging=handle.CapturePointer(e.Pointer);if(!dragging)return;reordering=true;
             startY=row.TransformToVisual(rows).TransformPoint(new Windows.Foundation.Point()).Y;
             shift=new TranslateTransform();row.RenderTransform=shift;row.Opacity=.8;
             row.BorderBrush=Primary;row.BorderThickness=new Thickness(1);e.Handled=true;
         };
-        handle.PointerMoved+=(_,e)=>{if(!dragging)return;double y=e.GetCurrentPoint(rows).Position.Y;shift!.Y=Math.Clamp(y-startY-row.ActualHeight/2,-startY,Math.Max(0,rows.ActualHeight-startY-row.ActualHeight));e.Handled=true;};
-        handle.PointerReleased+=(_,e)=>{Finish(true);e.Handled=true;};
+        handle.PointerMoved+=(_,e)=>{reorderMoves++;if(!dragging)return;double y=e.GetCurrentPoint(rows).Position.Y;shift!.Y=Math.Clamp(y-startY-row.ActualHeight/2,-startY,Math.Max(0,rows.ActualHeight-startY-row.ActualHeight));e.Handled=true;};
+        handle.PointerReleased+=(_,e)=>{reorderReleases++;Finish(true);e.Handled=true;};
         handle.PointerCanceled+=(_,_)=>Finish(false);handle.PointerCaptureLost+=(_,_)=>Finish(false);
     }
 
