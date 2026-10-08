@@ -111,10 +111,10 @@ public sealed partial class MainWindow : Window
         {
 
             AppWindow.ResizeClient(new SizeInt32((int)(520 * scale), (int)(520 * scale)));
-            Root.Background = new SolidColorBrush(args.Contains("--dark") ? Windows.UI.Color.FromArgb(255, 32, 32, 32) : Windows.UI.Color.FromArgb(255, 243, 243, 243));
+            Root.Background = new SolidColorBrush(Colors.Transparent);
         }
         // Paint the entire borderless client, including pixels allocated by resizing.
-        Root.Background=new SolidColorBrush(Dark ? Windows.UI.Color.FromArgb(255,32,32,32) : Windows.UI.Color.FromArgb(255,243,243,243));
+        Root.Background=new SolidColorBrush(Colors.Transparent);
         ApplyTheme();
 
         tray = new TrayIcon(hwnd, Path.Combine(AppContext.BaseDirectory, "app.ico"), TrayItems(), () => ShowFlyout(null, true), OnTrayMenu);
@@ -160,10 +160,29 @@ public sealed partial class MainWindow : Window
         if(DwmGetWindowAttribute(hwnd,14,out uint actual,4)>=0 && ((actual&1)!=0)!=cloak)
             throw new InvalidOperationException("DWM cloak state differs from requested state");
     }
-    void HideFlyout()
+    async void HideFlyout()
     {
-        ++animationGeneration;lastHidden=DateTime.UtcNow;flyoutVisible=false;
-        SetCloaked(true);
+        if(!flyoutVisible && !showingFlyout)return;
+        int generation=++animationGeneration;lastHidden=DateTime.UtcNow;
+        if(flyoutVisible)await AnimateFlyout(false);
+        if(generation!=animationGeneration)return;
+        flyoutVisible=false;SetCloaked(true);
+        flyoutMotion?.Stop();canvas.Opacity=1;canvas.RenderTransform=new TranslateTransform();
+    }
+    Task AnimateFlyout(bool show)
+    {
+        flyoutMotion?.Stop();
+        if(!MotionEnabled){canvas.Opacity=1;canvas.RenderTransform=new TranslateTransform();return Task.CompletedTask;}
+        var transform=new TranslateTransform();canvas.RenderTransform=transform;
+        var motion=new Microsoft.UI.Xaml.Media.Animation.Storyboard();flyoutMotion=motion;
+        double time=show?220:170;
+        var easing=new Microsoft.UI.Xaml.Media.Animation.CubicEase{EasingMode=show?Microsoft.UI.Xaml.Media.Animation.EasingMode.EaseOut:Microsoft.UI.Xaml.Media.Animation.EasingMode.EaseIn};
+        var slide=new Microsoft.UI.Xaml.Media.Animation.DoubleAnimation{From=show?42:0,To=show?0:42,Duration=new Duration(TimeSpan.FromMilliseconds(time)),EasingFunction=easing,EnableDependentAnimation=true};
+        var fade=new Microsoft.UI.Xaml.Media.Animation.DoubleAnimation{From=show?0:1,To=show?1:0,Duration=new Duration(TimeSpan.FromMilliseconds(time)),EasingFunction=easing};
+        Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTarget(slide,transform);Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTargetProperty(slide,"Y");
+        Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTarget(fade,canvas);Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTargetProperty(fade,"Opacity");motion.Children.Add(slide);motion.Children.Add(fade);
+        var done=new TaskCompletionSource<bool>();motion.Completed+=(_,_)=>done.TrySetResult(true);motion.Begin();
+        return done.Task;
     }
     async Task PresentPreparedAsync()
     {
@@ -184,13 +203,19 @@ public sealed partial class MainWindow : Window
             int x=area.X+area.Width-AppWindow.Size.Width/2-12,y=area.Y+area.Height+4;
             if(tray.TryGetAnchor(out int anchorX,out int anchorY)){x=anchorX;y=anchorY;area=DisplayArea.GetFromPoint(new PointInt32(x,y),DisplayAreaFallback.Nearest).WorkArea;}
             int left=Math.Clamp(x-AppWindow.Size.Width/2,area.X,Math.Max(area.X,area.X+area.Width-AppWindow.Size.Width));
-            int top=Math.Clamp(y-AppWindow.Size.Height-16,area.Y,Math.Max(area.Y,area.Y+area.Height-AppWindow.Size.Height));
+            int top=Math.Clamp(y-AppWindow.Size.Height-16,area.Y,Math.Max(area.Y,area.Y+area.Height-AppWindow.Size.Height-12));
             AppWindow.Move(new PointInt32(left,top));HideFromTaskbar();
             if(!AppWindow.IsVisible)AppWindow.Show(false);
+            flyoutMotion?.Stop();canvas.Opacity=MotionEnabled?0:1;canvas.RenderTransform=new TranslateTransform{Y=MotionEnabled?42:0};
             await PresentPreparedAsync();
             if(generation!=animationGeneration)return;
             SetCloaked(false);flyoutVisible=true;Activate();SetForegroundWindow(hwnd);
+            await AnimateFlyout(true);
             PositionTitleBar();_ = Refresh();
+            if(preview && args.Contains("--interactive")) {
+                if(SystemBackdrop is not MicaBackdrop || Root.Background is not SolidColorBrush bg || bg.Color.A!=0)throw new InvalidOperationException("Mica obscured");
+                if(AppWindow.Position.Y+AppWindow.Size.Height>area.Y+area.Height-12)throw new InvalidOperationException("Taskbar gap lost");
+            }
         } finally {showingFlyout=false;}
     }
 
@@ -223,7 +248,7 @@ public sealed partial class MainWindow : Window
     void ApplyTheme()
     {
         ApplyAccent();
-        Root.Background=new SolidColorBrush(Dark ? Windows.UI.Color.FromArgb(255,32,32,32) : Windows.UI.Color.FromArgb(255,243,243,243));
+        Root.Background=new SolidColorBrush(Colors.Transparent);
         Root.RequestedTheme = settings.Theme switch { "light" => ElementTheme.Light, "dark" => ElementTheme.Dark, _ => ElementTheme.Default };
         Root.FlowDirection = L.Ar ? FlowDirection.RightToLeft : FlowDirection.LeftToRight;
     }
@@ -486,7 +511,7 @@ public sealed partial class MainWindow : Window
                 if(!preview && tray!=null && tray.TryGetAnchor(out int x,out int y)) {
                     var area=DisplayArea.GetFromPoint(new PointInt32(x,y),DisplayAreaFallback.Nearest).WorkArea;
                     int left=Math.Clamp(x-AppWindow.Size.Width/2,area.X,Math.Max(area.X,area.X+area.Width-AppWindow.Size.Width));
-                    int top=Math.Clamp(y-AppWindow.Size.Height-16,area.Y,Math.Max(area.Y,area.Y+area.Height-AppWindow.Size.Height));
+                    int top=Math.Clamp(y-AppWindow.Size.Height-16,area.Y,Math.Max(area.Y,area.Y+area.Height-AppWindow.Size.Height-12));
                     if(AppWindow.Position.X!=left || AppWindow.Position.Y!=top)AppWindow.Move(new PointInt32(left,top));
                 }
             }
@@ -1182,7 +1207,7 @@ public sealed partial class MainWindow : Window
                 File.AppendAllText(phases,$"{DateTime.UtcNow:O} reopen-stress {cycle}\n");
                 ShowFlyout("main",false);while(showingFlyout)await Task.Delay(10);
                 if(!flyoutVisible)throw new InvalidOperationException("Reopen was cancelled");
-                await Task.Delay(180);HideFlyout();await Task.Delay(100);
+                await Task.Delay(180);HideFlyout();await Task.Delay(260);
             }
             File.AppendAllText(phases,$"PASS serialized geometry, three open/settings/main/hide cycles; unchanged refresh native resize count unchanged. Actual DPI={GetDpiForWindow(hwnd)}\n");
         }
