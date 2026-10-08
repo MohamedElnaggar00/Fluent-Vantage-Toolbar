@@ -35,7 +35,13 @@ public sealed class LegionDevice
         if (!targetModel) throw new InvalidOperationException("This device is not a recognised Lenovo Legion model, so hardware writes are disabled.");
         using var h = CreateFile(@"\\.\EnergyDrv", 3, 3, IntPtr.Zero, 3, 0x80, IntPtr.Zero);
         if (h.IsInvalid) throw new Win32Exception(Marshal.GetLastWin32Error());
-        if (!DeviceIoControl(h, ioctl, ref command, 4, out uint response, 4, out uint returned, IntPtr.Zero) || returned < 4) throw new Win32Exception(Marshal.GetLastWin32Error());
+        bool success = DeviceIoControl(h, ioctl, ref command, 4, out uint response, 4, out uint returned, IntPtr.Zero);
+        int error = success ? 0 : Marshal.GetLastWin32Error();
+        DiagnosticLog.Write($"EnergyDrv ioctl=0x{ioctl:X} command=0x{command:X} success={success} bytes={returned} error={error}");
+        if (!success) throw new Win32Exception(error);
+        bool query = (ioctl == 0x831020F8 && command == 255) || (ioctl == 0x831020E8 && command == 2);
+        if (query && returned < 4) throw new InvalidOperationException($"EnergyDrv query returned {returned} bytes instead of a state value.");
+        // Setter success has no output-payload requirement. Separate state queries verify the effect.
         DiagnosticLog.Write($"EnergyDrv ioctl=0x{ioctl:X} in=0x{command:X} out=0x{response:X}");
         Thread.Sleep(20); return response;
         }
