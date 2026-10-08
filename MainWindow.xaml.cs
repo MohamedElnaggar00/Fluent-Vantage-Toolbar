@@ -56,6 +56,11 @@ public sealed partial class MainWindow : Window
     [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")] static extern IntPtr GetWindowLongPtr(IntPtr hwnd, int index);
     [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW")] static extern IntPtr SetWindowLongPtr(IntPtr hwnd, int index, IntPtr value);
 
+    [DllImport("user32.dll")] static extern bool RedrawWindow(IntPtr h,IntPtr rect,IntPtr region,uint flags);
+    [DllImport("user32.dll",EntryPoint="SetClassLongPtrW")] static extern IntPtr SetClassLongPtr(IntPtr h,int index,IntPtr value);
+    [DllImport("gdi32.dll")] static extern IntPtr CreateSolidBrush(uint color);
+    [DllImport("gdi32.dll")] static extern bool DeleteObject(IntPtr handle);
+
     public MainWindow(bool startHidden)
     {
         InitializeComponent();
@@ -464,6 +469,11 @@ public sealed partial class MainWindow : Window
         }
         Add(transform,"Y",96,0);Add(canvas,"Opacity",0,1);
         if(outgoingPage!=null)Add(outgoingPage,"Opacity",1,0);
+        // DWM may expose newly allocated client pixels before WinUI's next
+        // composition frame. Give the native class the same themed erase brush
+        // and force layout/paint for each atomic rect, rather than copying old bits.
+        IntPtr brush=CreateSolidBrush(Dark ? 0x00202020u : 0x00F3F3F3u);
+        IntPtr previousBrush=SetClassLongPtr(hwnd,-10,brush);
         motion.Begin();
         var clock=Stopwatch.StartNew();int steps=0;
         var trace=new List<string>();
@@ -476,6 +486,7 @@ public sealed partial class MainWindow : Window
                 AppWindow.MoveAndResize(rect);nativeResizeCount++;steps++;
             }
             Root.UpdateLayout();
+            RedrawWindow(hwnd,IntPtr.Zero,IntPtr.Zero,0x0185);
             canvas.Clip=new RectangleGeometry { Rect=new Windows.Foundation.Rect(0,-96,canvas.ActualWidth,Math.Max(canvas.ActualHeight,Root.ActualHeight)) };
             trace.Add($"{clock.Elapsed.TotalMilliseconds:F1},{rect.X},{rect.Y},{rect.Width},{rect.Height},{rect.Y+rect.Height}");
             if(t>=1)break;
@@ -485,6 +496,7 @@ public sealed partial class MainWindow : Window
             AppWindow.MoveAndResize(target);Root.UpdateLayout();await NextFrameAsync();
         }
         motion.Stop();canvas.Opacity=1;transform.Y=0;
+        SetClassLongPtr(hwnd,-10,previousBrush);DeleteObject(brush);
         DiagnosticLog.Write($"Page motion {view}: {start.Height}->{target.Height}; {steps} atomic geometry steps; {clock.ElapsedMilliseconds}ms; dpi={GetDpiForWindow(hwnd)}");
         if(preview && args.Contains("--interactive")) {
             var dir=Path.GetDirectoryName(args[Array.IndexOf(args,"--capture")+1])!;
