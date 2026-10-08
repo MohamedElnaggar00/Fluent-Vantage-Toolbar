@@ -17,6 +17,7 @@ public partial class App : Application
         try
         {
             var a = Environment.GetCommandLineArgs();
+            if(a.Contains("--shutdown")){Startup.SignalExit();Environment.Exit(0);return;}
             bool capture = a.Contains("--capture"), background = a.Contains("--background");
             if (!capture)
             {
