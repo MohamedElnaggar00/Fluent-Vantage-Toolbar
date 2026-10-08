@@ -28,6 +28,9 @@ sealed class TrayIcon : IDisposable
     [StructLayout(LayoutKind.Sequential)] struct NOTIFYICONIDENTIFIER { public uint cbSize; public IntPtr hWnd; public uint uID; public Guid guidItem; }
     [DllImport("shell32.dll")] static extern int Shell_NotifyIconGetRect(ref NOTIFYICONIDENTIFIER id, out RECT r);
 
+    public Func<bool>? IsDark;
+    [DllImport("uxtheme.dll", EntryPoint="#135")] static extern int SetPreferredAppMode(int mode);
+    [DllImport("uxtheme.dll", EntryPoint="#136")] static extern void FlushMenuThemes();
     public bool NativeTip = false;   // the custom hover card replaces the system tooltip
     int _lastX = int.MinValue, _lastY = int.MinValue;
 
@@ -142,6 +145,8 @@ sealed class TrayIcon : IDisposable
 
     void ShowMenu()
     {
+        // Undocumented Windows menu-theme exports, guarded by version and fallback.
+        try { if(Environment.OSVersion.Version.Build>=18362){SetPreferredAppMode(IsDark?.Invoke()==true?2:3);FlushMenuThemes();} }catch { }
         GetCursorPos(out var pt);
         var m = CreatePopupMenu();
         foreach (var (id, text) in _items) AppendMenuW(m, 0, new UIntPtr((uint)id), text);
