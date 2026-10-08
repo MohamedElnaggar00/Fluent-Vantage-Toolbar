@@ -56,6 +56,7 @@ public sealed partial class MainWindow : Window
     [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")] static extern IntPtr GetWindowLongPtr(IntPtr hwnd, int index);
     [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW")] static extern IntPtr SetWindowLongPtr(IntPtr hwnd, int index, IntPtr value);
 
+    [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr h,IntPtr after,int x,int y,int width,int height,uint flags);
     [DllImport("gdi32.dll")] static extern IntPtr CreateRoundRectRgn(int left,int top,int right,int bottom,int width,int height);
     [DllImport("user32.dll")] static extern int SetWindowRgn(IntPtr hwnd,IntPtr region,bool redraw);
 
@@ -328,8 +329,8 @@ public sealed partial class MainWindow : Window
             view=target;
             Render(animate);
             await geometryReady;
-            if(target=="battery")_ = LoadBatteryAsync();
-            if(target=="warranty")_ = LoadWarrantyAsync(false);
+            if(target=="battery" && !preview)_ = LoadBatteryAsync();
+            if(target=="warranty" && !preview)_ = LoadWarrantyAsync(false);
         } catch(Exception error) { DiagnosticLog.Write("Page navigation failed: "+error); if(preview)throw; }
         finally {
             if(outgoingPage!=null){Root.Children.Remove(outgoingPage);outgoingPage=null;}
@@ -504,7 +505,8 @@ public sealed partial class MainWindow : Window
         }
         if(generation==geometryGeneration && AppWindow.IsVisible) {
             canvas.Margin=new Thickness(0);
-            AppWindow.MoveAndResize(target);SetWindowRgn(hwnd,IntPtr.Zero,true);
+            SetWindowRgn(hwnd,IntPtr.Zero,false);
+            SetWindowPos(hwnd,IntPtr.Zero,target.X,target.Y,target.Width,target.Height,0x0014|0x0100);
             Root.UpdateLayout();await NextFrameAsync();
         }
         motion.Stop();canvas.Opacity=1;transform.Y=0;
