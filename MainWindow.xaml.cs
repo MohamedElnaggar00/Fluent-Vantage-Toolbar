@@ -678,7 +678,7 @@ public sealed partial class MainWindow : Window
         string Number(double? v, string unit) => v.HasValue ? v.Value.ToString("0.0", CultureInfo.InvariantCulture) + unit : na;
         var stack = new StackPanel { Spacing = 14 };
         var header = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12 };
-        var headerIcon = Glyph("\uE83F", 22); headerIcon.Foreground = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 156, 218, 155));
+        var headerIcon = DashboardIcons.Create("Battery");
         header.Children.Add(headerIcon); header.Children.Add(Text(L.T("bat.header"), 20, true));
         stack.Children.Add(header);
         double? charge = current?.Percent;
