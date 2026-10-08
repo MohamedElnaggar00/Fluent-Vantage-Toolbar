@@ -95,15 +95,15 @@ jobs:
         run: |
           $v = '${{ steps.ver.outputs.version }}'
           New-Item -ItemType Directory -Force release | Out-Null
-          Compress-Archive out-fd/* "release/FluentLegionToolbar-$v-portable-x64.zip"
+          Compress-Archive out-fd/* "release/FluentVantageToolbar-$v-portable-x64.zip"
           choco install innosetup -y --no-progress
           $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
-          & $iscc installer.iss /DSourceDir=out-fd /DOutName=FluentLegionToolbar-Setup /DBundled=0
+          & $iscc installer.iss /DSourceDir=out-fd /DOutName=FluentVantageToolbar-Setup /DBundled=0
           if($LASTEXITCODE -ne 0) { throw 'Installer build failed' }
-          & $iscc installer.iss /DSourceDir=out-sc /DOutName=FluentLegionToolbar-Setup-with-dotnet /DBundled=1
+          & $iscc installer.iss /DSourceDir=out-sc /DOutName=FluentVantageToolbar-Setup-with-dotnet /DBundled=1
           if($LASTEXITCODE -ne 0) { throw 'Bundled installer build failed' }
-          Move-Item installers/FluentLegionToolbar-Setup.exe "release/FluentLegionToolbar-$v-Setup.exe"
-          Move-Item installers/FluentLegionToolbar-Setup-with-dotnet.exe "release/FluentLegionToolbar-$v-Setup-with-dotnet.exe"
+          Move-Item installers/FluentVantageToolbar-Setup.exe "release/FluentVantageToolbar-$v-Setup.exe"
+          Move-Item installers/FluentVantageToolbar-Setup-with-dotnet.exe "release/FluentVantageToolbar-$v-Setup-with-dotnet.exe"
           Get-ChildItem release | Select-Object Name,Length
       - name: Publish GitHub Release
         shell: pwsh
@@ -115,13 +115,13 @@ jobs:
           gh release view $tag *> $null
           if($LASTEXITCODE -eq 0) { gh release delete $tag --cleanup-tag --yes }
           $notes = @"
-          Fluent Legion Toolbar $v (private build, built from commit ${{ github.sha }}).
+          Fluent Vantage Toolbar $v (private build, built from commit ${{ github.sha }}).
 
-          - FluentLegionToolbar-$v-portable-x64.zip: no install, needs the .NET 8 Desktop Runtime.
-          - FluentLegionToolbar-$v-Setup.exe: installer, needs the .NET 8 Desktop Runtime (warns if missing).
-          - FluentLegionToolbar-$v-Setup-with-dotnet.exe: installer with .NET bundled, nothing else to install.
+          - FluentVantageToolbar-$v-portable-x64.zip: no install, needs the .NET 8 Desktop Runtime.
+          - FluentVantageToolbar-$v-Setup.exe: installer, needs the .NET 8 Desktop Runtime (warns if missing).
+          - FluentVantageToolbar-$v-Setup-with-dotnet.exe: installer with .NET bundled, nothing else to install.
 
           Built by CI only. Not yet install-tested on every Legion model.
           "@
-          gh release create $tag (Get-ChildItem release).FullName --target ${{ github.sha }} --title "Fluent Legion Toolbar $v" --notes $notes
+          gh release create $tag (Get-ChildItem release).FullName --target ${{ github.sha }} --title "Fluent Vantage Toolbar $v" --notes $notes
           if($LASTEXITCODE -ne 0) { throw 'Release failed' }
