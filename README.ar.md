@@ -1,4 +1,4 @@
-# Fluent Legion Toolbar (العربية)
+# Fluent Vantage Toolbar (العربية)
 
 [English README](README.md)
 
@@ -39,7 +39,7 @@
 لا ترسل الأداة أوامر شحن أو لوحة لمس إلى موديل مختلف. تتعطل العناصر التي لا يمكن قراءة حالتها. لا توقف Lenovo Vantage ولا تغير خدمات النظام. قد تعيد خدمات Lenovo ضبط وضع الشحن؛ تعرض الأداة فشل التأكيد بدلاً من نجاح وهمي.
 
 ## التشغيل والبناء
-Windows 11 x64 و.NET 8 Desktop Runtime. من صفحة Actions الخاصة بالريبو، افتح آخر تشغيل ناجح لـ `Verify private WinUI build`، ثم نزّل `private-test-build-and-captures`. فك الملف، ثم فك `Fluent-Legion-toolbar-runtime-dependent.zip` في مجلد كامل وشغّل `FluentLegionToolbar.exe`. لا تنقل ملف exe وحده، لأن ملفات XAML والمكتبات المرافقة مطلوبة.
+Windows 11 x64 و.NET 8 Desktop Runtime. من صفحة Actions الخاصة بالريبو، افتح آخر تشغيل ناجح لـ `Verify private WinUI build`، ثم نزّل `private-test-build-and-captures`. فك الملف، ثم فك `Fluent-Vantage-Toolbar-runtime-dependent.zip` في مجلد كامل وشغّل `FluentLegionToolbar.exe`. لا تنقل ملف exe وحده، لأن ملفات XAML والمكتبات المرافقة مطلوبة.
 
 للبناء من المصدر استخدم Visual Studio 2022 مع MSBuild وأدوات Windows/WinUI، ثم اتبع `.github/workflows/verify.yml`. هذا هو المسار الذي تم التحقق منه؛ `dotnet publish` وحده لم ينجح في إعداد أدوات PRI أثناء التجربة. سير العمل ينسخ ملفات XBF وPRI اللازمة إلى مجلد النشر قبل ضغطه.
 
