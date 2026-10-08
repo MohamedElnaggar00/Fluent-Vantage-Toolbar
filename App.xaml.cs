@@ -4,7 +4,8 @@ public partial class App : Application
 {
     private MainWindow? window;
     public App() {
-        UnhandledException += (_,e) => Log(e.Exception);
+        DebugSettings.XamlResourceReferenceFailed += (_,e) => Log(new Exception("Resource: "+e.Message));
+        UnhandledException += (_,e) => { Log(new Exception("XAML event: "+e.Message)); Log(e.Exception); };
         AppDomain.CurrentDomain.UnhandledException += (_,e) => Log(e.ExceptionObject as Exception ?? new Exception(e.ExceptionObject?.ToString()));
         try { InitializeComponent(); } catch(Exception e) { Log(e); throw; }
     }
