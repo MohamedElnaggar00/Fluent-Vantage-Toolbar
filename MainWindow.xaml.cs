@@ -30,7 +30,7 @@ public sealed partial class MainWindow : Window
     readonly bool preview;
     readonly IntPtr hwnd;
     Grid canvas = null!;
-    readonly Grid titleBar = new() { Height = 36 };
+    readonly Grid titleBar = new() { MinHeight = 36 };
     readonly ContentControl body = new() { HorizontalContentAlignment = HorizontalAlignment.Stretch, VerticalContentAlignment = VerticalAlignment.Stretch };
     readonly Dictionary<string, ToggleButton> tileButtons = new();
     DeviceState? current;
@@ -342,7 +342,7 @@ public sealed partial class MainWindow : Window
         if (view == "main") {
             Root.Measure(new Windows.Foundation.Size(520, double.PositiveInfinity));
             requested = Math.Ceiling(Root.DesiredSize.Height);
-        } else requested = 520 + titleBar.Height + Root.Padding.Top + Root.Padding.Bottom;
+        } else requested = 520 + Math.Max(36,titleBar.ActualHeight) + Root.Padding.Top + Root.Padding.Bottom;
         var area = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Nearest).WorkArea;
         double scale = Math.Max(1, GetDpiForWindow(hwnd) / 96d);
         double height = Math.Min(requested, area.Height / scale - 16);
@@ -818,6 +818,13 @@ public sealed partial class MainWindow : Window
             }
             await SaveImage(Path.Combine(dir,$"main-{count}-warranty{warrantyVisible}-details{detailsVisible}-"+name));
         }
+        // Model names are machine-specific and long names must fit the caption too.
+        foreach(var model in new[]{"LOQ 15IRX9","Legion Pro 7 16IRX10H Long Device Model Name"}) {
+            DeviceInfo.Override=model;settings.HiddenTiles=Tiles.Skip(5).Select(t=>t.Id).ToList();settings.ShowWarranty=false;view="main";Render();await Task.Delay(400);
+            if(titleBar.ActualHeight+1<titleBar.DesiredSize.Height)throw new InvalidOperationException("Dynamic model header clipped");
+            await SaveImage(Path.Combine(dir,"model-"+(model.StartsWith("LOQ")?"loq":"long")+"-"+name));
+        }
+        DeviceInfo.Override="Legion 5 15ITH6H";
         settings.ShowWarranty=true;settings.ShowBatteryDetails=true;
         settings.HiddenTiles.Clear();
         // Low and critical battery colours.
