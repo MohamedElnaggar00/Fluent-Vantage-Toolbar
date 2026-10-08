@@ -65,12 +65,12 @@ public sealed partial class MainWindow : Window
         if (AppWindow.Presenter is OverlappedPresenter presenter) { presenter.SetBorderAndTitleBar(true, false); presenter.IsResizable = false; presenter.IsMaximizable = false; presenter.IsMinimizable = false; presenter.IsAlwaysOnTop = true; }
         HideFromTaskbar();
         double scale = GetDpiForWindow(hwnd) / 96d;
-        AppWindow.Resize(new SizeInt32((int)(520 * scale), (int)(570 * scale)));
+        AppWindow.Resize(new SizeInt32((int)(520 * scale), (int)(520 * scale)));
 
         Root.Padding = new Thickness(24, 8, 24, 20);
         Root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         Root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-        var canvas = new Grid { Width = 472, Height = 542 };
+        var canvas = new Grid { Width = 472, Height = 492 };
         canvas.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         canvas.RowDefinitions.Add(new RowDefinition());
         canvas.Children.Add(titleBar); Grid.SetRow(body, 1); canvas.Children.Add(body);
@@ -79,8 +79,8 @@ public sealed partial class MainWindow : Window
         // Flyout uses a compact custom caption row; the gear and X share one baseline.
         if (preview)
         {
-            Root.Width = 520; Root.Height = 570;
-            AppWindow.Resize(new SizeInt32((int)(520 * scale), (int)(570 * scale)));
+            Root.Width = 520; Root.Height = 520;
+            AppWindow.Resize(new SizeInt32((int)(520 * scale), (int)(520 * scale)));
             Root.Background = new SolidColorBrush(args.Contains("--dark") ? Windows.UI.Color.FromArgb(255, 32, 32, 32) : Windows.UI.Color.FromArgb(255, 243, 243, 243));
         }
         ApplyTheme();
@@ -463,6 +463,7 @@ public sealed partial class MainWindow : Window
         links.Children.Add(ToggleRow(L.T("battery.link"), settings.ShowBatteryDetails, on => { settings.ShowBatteryDetails = on; settings.Save(); }));
         stack.Children.Add(Card(links, new Thickness(14, 6, 14, 6)));
 
+        stack.Children.Add(Text(L.Ar ? "قفل Fn يبدأ مفعّلاً في الواجهة. القراءة الحالية من النظام غير موثوقة؛ هذه ليست إشارة إلى الحالة الفعلية، ولا يغيّر البرنامج قفل Fn عند بدء التشغيل." : "Fn Lock starts ON in the UI. The current system reading is unreliable; this is an assumption, not a verified hardware state. Startup does not change Fn Lock.", 12, false, SecondaryText));
         stack.Children.Add(Text(L.T("status.some"), 12, false, SecondaryText));
         stack.Children.Add(Text(current?.Problems.Length > 0 ? string.Join("\n", current.Problems) : L.T("status.ok"), 12, false, SecondaryText));
         stack.Children.Add(Text(DiagnosticLog.Path, 11, false, SecondaryText));
