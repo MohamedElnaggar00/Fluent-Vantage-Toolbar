@@ -5,17 +5,19 @@ using WindowsDisplayAPI.Native.DeviceContext;
 namespace FluentLegionToolbar.Hardware;
 static class DisplayControl
 {
+    static string SourceName(string monitorName) {
+        int suffix = monitorName.IndexOf('\\', 4);
+        return suffix < 0 ? monitorName : monitorName[..suffix];
+    }
     static Display Internal()
     {
         var displays = Display.GetDisplays().ToArray();
-        foreach (var display in displays) DiagnosticLog.Write($"Display device={display.DeviceName} screen={display.ScreenName} internal={display.IsInternal} path={display.DevicePath}");
-        var direct = displays.Where(d => d.IsInternal).ToArray();
-        if (direct.Length == 1) return direct[0];
+        foreach (var display in displays) DiagnosticLog.Write($"Display device={display.DeviceName} source={SourceName(display.DeviceName)} path={display.DevicePath}");
         var paths = PathInfo.GetActivePaths();
         var names = paths.Where(p => p.TargetsInfo.Any(t => t.OutputTechnology is DisplayConfigVideoOutputTechnology.Internal or DisplayConfigVideoOutputTechnology.DisplayPortEmbedded))
             .Select(p => p.DisplaySource.DisplayName).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
         foreach (var path in paths) DiagnosticLog.Write($"Display path source={path.DisplaySource.DisplayName} output={string.Join(",", path.TargetsInfo.Select(t => t.OutputTechnology))}");
-        var candidates = displays.Where(d => names.Contains(d.ScreenName, StringComparer.OrdinalIgnoreCase)).ToArray();
+        var candidates = displays.Where(d => names.Contains(SourceName(d.DeviceName), StringComparer.OrdinalIgnoreCase)).ToArray();
         if (candidates.Length == 1) return candidates[0];
         // No arbitrary primary-screen fallback: that could change an external monitor.
         throw new NotSupportedException("Internal display could not be identified safely. External displays are not changed.");
