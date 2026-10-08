@@ -102,6 +102,7 @@ jobs:
             *-light.png
             *-dark.png
             out-fd/launch-error.txt
+            layout-*.txt
       - name: Package (zip + installers)
         shell: pwsh
         run: |
