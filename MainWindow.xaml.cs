@@ -56,6 +56,8 @@ public sealed partial class MainWindow : Window
     [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")] static extern IntPtr GetWindowLongPtr(IntPtr hwnd, int index);
     [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW")] static extern IntPtr SetWindowLongPtr(IntPtr hwnd, int index, IntPtr value);
 
+    [DllImport("gdi32.dll")] static extern IntPtr CreateRoundRectRgn(int left,int top,int right,int bottom,int width,int height);
+    [DllImport("user32.dll")] static extern int SetWindowRgn(IntPtr hwnd,IntPtr region,bool redraw);
     [DllImport("user32.dll")] static extern bool RedrawWindow(IntPtr h,IntPtr rect,IntPtr region,uint flags);
     [DllImport("user32.dll",EntryPoint="SetClassLongPtrW")] static extern IntPtr SetClassLongPtr(IntPtr h,int index,IntPtr value);
     [DllImport("gdi32.dll")] static extern IntPtr CreateSolidBrush(uint color);
@@ -335,7 +337,8 @@ public sealed partial class MainWindow : Window
         } catch(Exception error) { DiagnosticLog.Write("Page navigation failed: "+error); if(preview)throw; }
         finally {
             if(outgoingPage!=null){Root.Children.Remove(outgoingPage);outgoingPage=null;}
-            canvas.Opacity=1;canvas.RenderTransform=new TranslateTransform();canvas.Clip=null;
+            canvas.Opacity=1;canvas.RenderTransform=new TranslateTransform();canvas.Clip=null;canvas.Margin=new Thickness(0);
+            SetWindowRgn(hwnd,IntPtr.Zero,true);
             if(animate){await NextFrameAsync();Root.Background=navigationBackground;}
             pageNavigating=false;
         }
@@ -469,11 +472,23 @@ public sealed partial class MainWindow : Window
         }
         Add(transform,"Y",96,0);Add(canvas,"Opacity",0,1);
         if(outgoingPage!=null)Add(outgoingPage,"Opacity",1,0);
-        // DWM may expose newly allocated client pixels before WinUI's next
-        // composition frame. Give the native class the same themed erase brush
-        // and force layout/paint for each atomic rect, rather than copying old bits.
-        IntPtr brush=CreateSolidBrush(Dark ? 0x00202020u : 0x00F3F3F3u);
-        IntPtr previousBrush=SetClassLongPtr(hwnd,-10,brush);
+        // Allocate the largest surface once while covered, then animate its
+        // visible region. No newly allocated DWM strip is exposed mid-transition.
+        int envelopeTop=Math.Min(start.Y,target.Y);
+        int envelopeBottom=Math.Max(start.Y+start.Height,target.Y+target.Height);
+        var envelope=new RectInt32(target.X,envelopeTop,target.Width,envelopeBottom-envelopeTop);
+        double scale=Math.Max(1,GetDpiForWindow(hwnd)/96d);
+        void Reveal(int top,int height) {
+            int radius=(int)Math.Round(8*scale);
+            SetWindowRgn(hwnd,CreateRoundRectRgn(0,top,target.Width+1,top+height+1,radius,radius),true);
+        }
+        AppWindow.Hide();
+        AppWindow.MoveAndResize(envelope);Root.UpdateLayout();
+        if(outgoingPage!=null)outgoingPage.Margin=new Thickness(0,(start.Y-envelopeTop)/scale,0,0);
+        canvas.Margin=new Thickness(0,(target.Y-envelopeTop)/scale,0,0);
+        Reveal(start.Y-envelopeTop,start.Height);
+        await NextFrameAsync();Root.UpdateLayout();await NextFrameAsync();
+        AppWindow.Show();
         motion.Begin();
         var clock=Stopwatch.StartNew();int steps=0;
         var trace=new List<string>();
@@ -482,21 +497,22 @@ public sealed partial class MainWindow : Window
             double eased=1-Math.Pow(1-t,3);
             int Mix(int a,int b)=>(int)Math.Round(a+(b-a)*eased);
             var rect=new RectInt32(Mix(start.X,target.X),Mix(start.Y,target.Y),Mix(start.Width,target.Width),Mix(start.Height,target.Height));
-            if(AppWindow.Size.Width!=rect.Width || AppWindow.Size.Height!=rect.Height || AppWindow.Position.X!=rect.X || AppWindow.Position.Y!=rect.Y) {
-                AppWindow.MoveAndResize(rect);nativeResizeCount++;steps++;
+            if(t>0) {
+                Reveal(rect.Y-envelopeTop,rect.Height);steps++;
             }
             Root.UpdateLayout();
-            RedrawWindow(hwnd,IntPtr.Zero,IntPtr.Zero,0x0185);
             canvas.Clip=new RectangleGeometry { Rect=new Windows.Foundation.Rect(0,-96,canvas.ActualWidth,Math.Max(canvas.ActualHeight,Root.ActualHeight)) };
             trace.Add($"{clock.Elapsed.TotalMilliseconds:F1},{rect.X},{rect.Y},{rect.Width},{rect.Height},{rect.Y+rect.Height}");
             if(t>=1)break;
             await Task.Delay(10);await NextFrameAsync();
         }
         if(generation==geometryGeneration && AppWindow.IsVisible) {
-            AppWindow.MoveAndResize(target);Root.UpdateLayout();await NextFrameAsync();
+            AppWindow.Hide();canvas.Margin=new Thickness(0);
+            AppWindow.MoveAndResize(target);SetWindowRgn(hwnd,IntPtr.Zero,true);
+            Root.UpdateLayout();await NextFrameAsync();AppWindow.Show();
         }
         motion.Stop();canvas.Opacity=1;transform.Y=0;
-        SetClassLongPtr(hwnd,-10,previousBrush);DeleteObject(brush);
+
         DiagnosticLog.Write($"Page motion {view}: {start.Height}->{target.Height}; {steps} atomic geometry steps; {clock.ElapsedMilliseconds}ms; dpi={GetDpiForWindow(hwnd)}");
         if(preview && args.Contains("--interactive")) {
             var dir=Path.GetDirectoryName(args[Array.IndexOf(args,"--capture")+1])!;
