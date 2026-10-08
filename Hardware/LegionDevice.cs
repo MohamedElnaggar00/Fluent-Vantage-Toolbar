@@ -28,7 +28,7 @@ public sealed class LegionDevice
     bool targetModel;
     uint Exchange(uint command, uint ioctl = 0x831020F8)
     {
-        if (!targetModel) throw new InvalidOperationException("This device is not the expected Lenovo 82JH / 15ITH6H.");
+        if (!targetModel) throw new InvalidOperationException("This device is not a recognised Lenovo Legion model, so hardware writes are disabled.");
         using var h = CreateFile(@"\\.\EnergyDrv", 3, 3, IntPtr.Zero, 3, 0x80, IntPtr.Zero);
         if (h.IsInvalid) throw new Win32Exception(Marshal.GetLastWin32Error());
         if (!DeviceIoControl(h, ioctl, ref command, 4, out uint response, 4, out uint returned, IntPtr.Zero) || returned < 4) throw new Win32Exception(Marshal.GetLastWin32Error());
@@ -45,7 +45,7 @@ public sealed class LegionDevice
     }
     int Touchpad(string method, int? input = null)
     {
-        if (!targetModel) throw new InvalidOperationException("Not the expected Legion model.");
+        if (!targetModel) throw new InvalidOperationException("This device is not a recognised Lenovo Legion model.");
         using var search = new ManagementObjectSearcher(@"root\WMI", "SELECT * FROM LENOVO_GAMEZONE_DATA");
         using var rows = search.Get();
         var instance = rows.Cast<ManagementObject>().FirstOrDefault() ?? throw new InvalidOperationException("Lenovo WMI provider is unavailable.");
@@ -72,7 +72,7 @@ public sealed class LegionDevice
         try
         {
             using var q = new ManagementObjectSearcher("SELECT Manufacturer, Model FROM Win32_ComputerSystem"); using var rows = q.Get();
-            foreach (ManagementObject row in rows) { using(row) { model = Convert.ToString(row["Model"]) ?? model; targetModel = Convert.ToString(row["Manufacturer"])?.Contains("LENOVO", StringComparison.OrdinalIgnoreCase) == true && (model.Contains("82JH") || model.Contains("15ITH6H")); } }
+            foreach (ManagementObject row in rows) { using(row) { model = Convert.ToString(row["Model"]) ?? model; targetModel = DeviceInfo.IsSupported; } }
         } catch (Exception e) { errors.Add(e.Message); targetModel = false; }
         int? percent=null; bool plugged=false, charging=false;
         if (GetSystemPowerStatus(out var power)) { percent = power.Percent <= 100 ? power.Percent : null; plugged = power.AC == 1; charging = power.Flags != 255 && (power.Flags & 8) != 0; }

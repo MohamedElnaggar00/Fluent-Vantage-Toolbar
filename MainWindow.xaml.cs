@@ -54,6 +54,7 @@ public sealed partial class MainWindow : Window
     {
         InitializeComponent();
         preview = args.Contains("--capture");
+        if (preview) Hardware.DeviceInfo.Override = "Legion 5 15ITH6H";
         settings = preview ? new AppSettings { Language = args.Contains("--arabic") ? "ar" : "en", Theme = args.Contains("--dark") ? "dark" : "light" } : AppSettings.Load();
         L.Set(settings.Language);
         Title = "Fluent Legion Toolbar";
@@ -353,7 +354,7 @@ public sealed partial class MainWindow : Window
         else button.Content = Glyph(tile.Glyph, 24);
         button.Click += (_, _) => OnTile(tile.Id);
         tileButtons[tile.Id] = button;
-        var label = Text(L.T(tile.LabelKey), 11);
+        var label = Text(L.T(tile.LabelKey), 10.5);
         label.TextAlignment = TextAlignment.Center; label.HorizontalAlignment = HorizontalAlignment.Center; label.MaxLines = 2;
         var panel = new StackPanel { Width = 86, Spacing = 8 };
         panel.Children.Add(button); panel.Children.Add(label);
