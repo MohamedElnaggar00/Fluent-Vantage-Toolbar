@@ -96,8 +96,8 @@ Some providers don't expose every value. Missing data is shown as unavailable. D
 | **Legion 5 15ITH6H (82JH)** | **Verified on the developer's machine** | Reference machine used for live testing. This is not certification of every control or every Windows/driver version. Fn's initial ON display is an assumption, not a reliable firmware read. |
 | Other Legion models | Expected, unverified | Recognized Legion models are candidates. Each control is checked separately. Please report your model and any unavailable controls. |
 | LOQ models | Expected, unverified | LOQ identity is recognized; firmware/control paths are not verified across the series. |
-| IdeaPad / Yoga / Slim / ThinkBook | Not supported by this project | Outside the supported device family and protocol coverage. Yoga users can try [lenovo-battery-tray](https://github.com/sahidhh/lenovo-battery-tray); check that project's model list first. |
-| ThinkPad | Not supported by this project | You can try [lenovo-battery-tray](https://github.com/sahidhh/lenovo-battery-tray), but check its compatibility notes first. This is a suggested alternative, not a claim of ThinkPad support. |
+| IdeaPad / Yoga / Slim / ThinkBook | Not supported by this project | Outside the supported device family and protocol coverage. Models with `ACPI\VPC2004` can try [lenovo-battery-tray](https://github.com/sahidhh/lenovo-battery-tray); Yoga support there is expected, unverified. |
+| ThinkPad | Not supported by this project | [lenovo-battery-tray](https://github.com/sahidhh/lenovo-battery-tray) also explicitly does not support ThinkPad. Neither project is a suitable ThinkPad recommendation. |
 
 Please include your model, machine type, Windows version and the relevant error when reporting a problem. Review diagnostic logs before sharing them, and remove serial numbers or other private identifiers.
 
