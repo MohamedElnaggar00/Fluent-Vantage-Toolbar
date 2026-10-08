@@ -26,6 +26,7 @@ static class L
     {
         ["title"] = ("My {device}", "جهازي {device}"),
         ["battery.header"] = ("MY BATTERY", "البطارية"),
+        ["tile.thermal"] = ("Thermal mode", "الوضع الحراري"),
         ["quick.header"] = ("QUICK SETTINGS", "الإعدادات السريعة"),
         ["battery.link"] = ("Battery details", "تفاصيل البطارية"),
         ["all.settings"] = ("All settings", "جميع الإعدادات"),
