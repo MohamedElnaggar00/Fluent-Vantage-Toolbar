@@ -29,6 +29,7 @@ public sealed partial class MainWindow : Window
     readonly string[] args = Environment.GetCommandLineArgs();
     readonly bool preview;
     readonly IntPtr hwnd;
+    Grid canvas = null!;
     readonly Grid titleBar = new() { Height = 36 };
     readonly ContentControl body = new() { HorizontalContentAlignment = HorizontalAlignment.Stretch, VerticalContentAlignment = VerticalAlignment.Stretch };
     readonly Dictionary<string, ToggleButton> tileButtons = new();
@@ -70,12 +71,12 @@ public sealed partial class MainWindow : Window
         Root.Padding = new Thickness(24, 8, 24, 20);
         Root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         Root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-        var canvas = new Grid { Width = 472, Height = 492 };
+        canvas = new Grid { Width = 472, Height = 492 };
         canvas.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         canvas.RowDefinitions.Add(new RowDefinition());
         canvas.Children.Add(titleBar); Grid.SetRow(body, 1); canvas.Children.Add(body);
         Root.RowDefinitions.Clear(); Root.Padding = new Thickness(24, 8, 24, 20);
-        Root.Children.Add(new Viewbox { Stretch = Stretch.Uniform, HorizontalAlignment = HorizontalAlignment.Stretch, VerticalAlignment = VerticalAlignment.Top, Child = canvas });
+        canvas.HorizontalAlignment = HorizontalAlignment.Center; Root.Children.Add(canvas);
         // Flyout uses a compact custom caption row; the gear and X share one baseline.
         if (preview)
         {
@@ -287,7 +288,31 @@ public sealed partial class MainWindow : Window
         PositionTitleBar();
         tileButtons.Clear();
         body.Content = view switch { "settings" => BuildSettings(), "about" => BuildAbout(), "battery" => BuildBattery(), "warranty" => BuildWarranty(), _ => BuildMain() };
+        ResizeForContent();
         if (view == "main") Apply();
+    }
+
+    void ResizeForContent()
+    {
+        // Measure the real main panel, including optional rows and links. Other pages scroll.
+        double contentHeight = 520;
+        if (view == "main" && body.Content is ScrollViewer scroll && scroll.Content is FrameworkElement panel) {
+            panel.Measure(new Windows.Foundation.Size(472, double.PositiveInfinity));
+            contentHeight = Math.Ceiling(panel.DesiredSize.Height);
+        }
+        double requested = contentHeight + titleBar.Height + 28;
+        var area = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Nearest).WorkArea;
+        double scale = Math.Max(1, GetDpiForWindow(hwnd) / 96d);
+        double height = Math.Min(requested, area.Height / scale - 16);
+        canvas.Height = Math.Max(100, height - 28);
+        if (preview) { Root.Width = 520; Root.Height = height; }
+        AppWindow.Resize(new SizeInt32((int)(520 * scale), (int)(height * scale)));
+        if (!preview && tray != null && tray.TryGetAnchor(out int x, out int y)) {
+            var work = DisplayArea.GetFromPoint(new PointInt32(x, y), DisplayAreaFallback.Nearest).WorkArea;
+            int left = Math.Clamp(x - AppWindow.Size.Width / 2, work.X, Math.Max(work.X, work.X + work.Width - AppWindow.Size.Width));
+            int top = Math.Clamp(y - AppWindow.Size.Height - 16, work.Y, Math.Max(work.Y, work.Y + work.Height - AppWindow.Size.Height));
+            AppWindow.Move(new PointInt32(left, top));
+        }
     }
 
     UIElement HeaderRow(string header, string? linkText, Action? click)
@@ -664,6 +689,15 @@ public sealed partial class MainWindow : Window
             await Task.Delay(target == "main" ? 2500 : 1200);
             await SaveImage(target == "main" ? path : Path.Combine(dir, target + "-" + name));
         }
+        // Verify dynamic height with a single tile row and then with no quick tiles.
+        foreach (var count in new[] { 5, 0 }) {
+            settings.HiddenTiles = Tiles.Skip(count).Select(t => t.Id).ToList();
+            view = "main"; Render();
+            foreach (var button in tileButtons.Values) button.IsEnabled = true;
+            await Task.Delay(1200);
+            await SaveImage(Path.Combine(dir, "tiles" + count + "-" + name));
+        }
+        settings.HiddenTiles.Clear();
         // Low and critical battery colours.
         foreach (var level in new[] { 20, 5 })
         {
