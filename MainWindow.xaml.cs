@@ -57,6 +57,8 @@ public sealed partial class MainWindow : Window
     Border? batteryFill; Grid? batteryFillHost;
     Windows.UI.Color batteryColor = Windows.UI.Color.FromArgb(255, 156, 218, 155);
 
+    [StructLayout(LayoutKind.Sequential)] struct NativePoint { public int X,Y; }
+    [DllImport("user32.dll")] static extern bool ClientToScreen(IntPtr hwnd,ref NativePoint point);
     [DllImport("user32.dll")] static extern bool SetCursorPos(int x,int y);
     [DllImport("user32.dll")] static extern void mouse_event(uint flags,uint dx,uint dy,uint data,UIntPtr extra);
     [DllImport("user32.dll")] static extern uint GetDpiForWindow(IntPtr hwnd);
@@ -203,6 +205,7 @@ public sealed partial class MainWindow : Window
                 var end=to.TransformToVisual(Root).TransformPoint(new Windows.Foundation.Point(h.ActualWidth/2,to.ActualHeight/2+(pass==0?12:-12)));
                 if(!GetWindowRect(hwnd,out var rect))throw new InvalidOperationException("Drag bounds unavailable");
                 double scale=GetDpiForWindow(hwnd)/96d;
+                var origin=new NativePoint();ClientToScreen(hwnd,ref origin);rect.Left=origin.X;rect.Top=origin.Y;
                 SetCursorPos(rect.Left+(int)(start.X*scale),rect.Top+(int)(start.Y*scale));mouse_event(2,0,0,0,UIntPtr.Zero);await Task.Delay(120);
                 for(int step=1;step<=12;step++) {SetCursorPos(rect.Left+(int)((start.X+(end.X-start.X)*step/12)*scale),rect.Top+(int)((start.Y+(end.Y-start.Y)*step/12)*scale));await Task.Delay(25);}
                 mouse_event(4,0,0,0,UIntPtr.Zero);await Task.Delay(180);
@@ -1317,6 +1320,8 @@ internal sealed class UpdateNoticeWindow : Window
         if(AppWindow.Presenter is OverlappedPresenter presenter){presenter.SetBorderAndTitleBar(true,false);presenter.IsResizable=false;presenter.IsMaximizable=false;presenter.IsMinimizable=false;presenter.IsAlwaysOnTop=true;}
         double scale=GetScale();AppWindow.ResizeClient(new SizeInt32((int)(370*scale),(int)(230*scale)));AppWindow.IsShownInSwitchers=false;
     }
+    [StructLayout(LayoutKind.Sequential)] struct NativePoint { public int X,Y; }
+    [DllImport("user32.dll")] static extern bool ClientToScreen(IntPtr hwnd,ref NativePoint point);
     [DllImport("user32.dll")] static extern bool SetCursorPos(int x,int y);
     [DllImport("user32.dll")] static extern void mouse_event(uint flags,uint dx,uint dy,uint data,UIntPtr extra);
     [DllImport("user32.dll")] static extern uint GetDpiForWindow(IntPtr hwnd);
