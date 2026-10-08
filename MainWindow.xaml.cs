@@ -58,6 +58,7 @@ public sealed partial class MainWindow : Window
     [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")] static extern IntPtr GetWindowLongPtr(IntPtr hwnd, int index);
     [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW")] static extern IntPtr SetWindowLongPtr(IntPtr hwnd, int index, IntPtr value);
 
+    [DllImport("user32.dll")] static extern bool RedrawWindow(IntPtr hwnd,IntPtr rect,IntPtr region,uint flags);
     [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr h,IntPtr after,int x,int y,int width,int height,uint flags);
     [DllImport("gdi32.dll")] static extern IntPtr CreateRoundRectRgn(int left,int top,int right,int bottom,int width,int height);
     [DllImport("user32.dll")] static extern int SetWindowRgn(IntPtr hwnd,IntPtr region,bool redraw);
@@ -74,7 +75,7 @@ public sealed partial class MainWindow : Window
         ExtendsContentIntoTitleBar = true;
         hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         try { AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "app.ico")); } catch { }
-        if (AppWindow.Presenter is OverlappedPresenter presenter) { presenter.SetBorderAndTitleBar(true, false); presenter.IsResizable = false; presenter.IsMaximizable = false; presenter.IsMinimizable = false; presenter.IsAlwaysOnTop = true; }
+        if (AppWindow.Presenter is OverlappedPresenter presenter) { presenter.SetBorderAndTitleBar(false, false); presenter.IsResizable = false; presenter.IsMaximizable = false; presenter.IsMinimizable = false; presenter.IsAlwaysOnTop = true; }
         HideFromTaskbar();
         double scale = GetDpiForWindow(hwnd) / 96d;
         AppWindow.ResizeClient(new SizeInt32((int)(520 * scale), (int)(520 * scale)));
@@ -95,6 +96,8 @@ public sealed partial class MainWindow : Window
             AppWindow.ResizeClient(new SizeInt32((int)(520 * scale), (int)(520 * scale)));
             Root.Background = new SolidColorBrush(args.Contains("--dark") ? Windows.UI.Color.FromArgb(255, 32, 32, 32) : Windows.UI.Color.FromArgb(255, 243, 243, 243));
         }
+        // Paint the entire borderless client, including pixels allocated by resizing.
+        Root.Background=new SolidColorBrush(Dark ? Windows.UI.Color.FromArgb(255,32,32,32) : Windows.UI.Color.FromArgb(255,243,243,243));
         ApplyTheme();
 
         tray = new TrayIcon(hwnd, Path.Combine(AppContext.BaseDirectory, "app.ico"), TrayItems(), () => ShowFlyout(null, true), OnTrayMenu);
@@ -212,6 +215,7 @@ public sealed partial class MainWindow : Window
     void ApplyTheme()
     {
         ApplyAccent();
+        Root.Background=new SolidColorBrush(Dark ? Windows.UI.Color.FromArgb(255,32,32,32) : Windows.UI.Color.FromArgb(255,243,243,243));
         Root.RequestedTheme = settings.Theme switch { "light" => ElementTheme.Light, "dark" => ElementTheme.Dark, _ => ElementTheme.Default };
         Root.FlowDirection = L.Ar ? FlowDirection.RightToLeft : FlowDirection.LeftToRight;
     }
@@ -353,7 +357,7 @@ public sealed partial class MainWindow : Window
 
     bool pageNavigating;
     Image? outgoingPage;
-    RectInt32? visiblePageBounds;
+
     Brush? navigationBackground;
     bool MotionEnabled => preview ? args.Contains("--interactive") : new Windows.UI.ViewManagement.UISettings().AnimationsEnabled;
 
@@ -386,13 +390,14 @@ public sealed partial class MainWindow : Window
             if(outgoingPage!=null){Root.Children.Remove(outgoingPage);outgoingPage=null;}
             canvas.Opacity=1;canvas.RenderTransform=new TranslateTransform();canvas.Clip=null;
             if(animate){await NextFrameAsync();Root.Background=navigationBackground;}
+            canvas.Margin=new Thickness(0);SetWindowRgn(hwnd,IntPtr.Zero,true);
             pageNavigating=false;
         }
     }
 
     void Render(bool animatePage=false)
     {
-        if(!animatePage){visiblePageBounds=null;canvas.Margin=new Thickness(0);SetWindowRgn(hwnd,IntPtr.Zero,true);}
+        canvas.Margin=new Thickness(0);SetWindowRgn(hwnd,IntPtr.Zero,true);
         L.Set(settings.Language);
         ApplyTheme();
         // Keep an expanding HWND off screen until its new XAML surface is painted.
@@ -484,7 +489,7 @@ public sealed partial class MainWindow : Window
                 // Anchor the bottom edge. One atomic rect update per frame avoids
                 // a resize/move mismatch; the snapshot covers layout preparation.
                 var pos=AppWindow.Position;var actual=AppWindow.Size;
-                var visible=visiblePageBounds ?? new RectInt32(pos.X,pos.Y,actual.Width,actual.Height);
+                var visible=new RectInt32(pos.X,pos.Y,actual.Width,actual.Height);
                 var start=new PointInt32(visible.X,visible.Y);var size=new SizeInt32(visible.Width,visible.Height);
                 int bottom=start.Y+size.Height;
                 int left=Math.Clamp(start.X+(size.Width-desired.Width)/2,work.X,Math.Max(work.X,work.X+work.Width-desired.Width));
@@ -509,7 +514,7 @@ public sealed partial class MainWindow : Window
     async Task AnimatePageGeometryAsync(int generation,RectInt32 target)
     {
         var position=AppWindow.Position;var size=AppWindow.Size;
-        var start=visiblePageBounds ?? new RectInt32(position.X,position.Y,size.Width,size.Height);
+        var start=new RectInt32(position.X,position.Y,size.Width,size.Height);
         const int duration=300;
         var transform=new TranslateTransform { Y=96 };canvas.RenderTransform=transform;
         var motion=new Microsoft.UI.Xaml.Media.Animation.Storyboard();
@@ -521,23 +526,7 @@ public sealed partial class MainWindow : Window
         }
         Add(transform,"Y",96,0);Add(canvas,"Opacity",0,1);
         if(outgoingPage!=null)Add(outgoingPage,"Opacity",1,0);
-        // Allocate the largest surface once while covered, then animate its
-        // visible region. No newly allocated DWM strip is exposed mid-transition.
-        int envelopeTop=Math.Min(position.Y,Math.Min(start.Y,target.Y));
-        int envelopeBottom=Math.Max(position.Y+size.Height,Math.Max(start.Y+start.Height,target.Y+target.Height));
-        var envelope=new RectInt32(target.X,envelopeTop,target.Width,envelopeBottom-envelopeTop);
-        double scale=Math.Max(1,GetDpiForWindow(hwnd)/96d);
-        void Reveal(int top,int height) {
-            int radius=(int)Math.Round(8*scale);
-            SetWindowRgn(hwnd,CreateRoundRectRgn(0,top,target.Width+1,top+height+1,radius,radius),true);
-        }
-        // The old snapshot remains visible at its screen position while the
-        // larger surface is arranged. Do not hide/show during page navigation.
-        AppWindow.MoveAndResize(envelope);Root.UpdateLayout();
-        if(outgoingPage!=null)outgoingPage.Margin=new Thickness(0,(start.Y-envelopeTop)/scale,0,0);
-        canvas.Margin=new Thickness(0,(target.Y-envelopeTop)/scale,0,0);
-        Reveal(start.Y-envelopeTop,start.Height);
-        await NextFrameAsync();Root.UpdateLayout();await NextFrameAsync();
+        canvas.Margin=new Thickness(0);SetWindowRgn(hwnd,IntPtr.Zero,true);
         motion.Begin();
         var clock=Stopwatch.StartNew();int steps=0;
         var trace=new List<string>();
@@ -547,16 +536,17 @@ public sealed partial class MainWindow : Window
             int Mix(int a,int b)=>(int)Math.Round(a+(b-a)*eased);
             var rect=new RectInt32(Mix(start.X,target.X),Mix(start.Y,target.Y),Mix(start.Width,target.Width),Mix(start.Height,target.Height));
             if(t>0) {
-                Reveal(rect.Y-envelopeTop,rect.Height);steps++;
+                AppWindow.MoveAndResize(rect);nativeResizeCount++;steps++;
             }
             Root.UpdateLayout();
+            RedrawWindow(hwnd,IntPtr.Zero,IntPtr.Zero,0x0185);
             canvas.Clip=new RectangleGeometry { Rect=new Windows.Foundation.Rect(0,-96,canvas.ActualWidth,Math.Max(canvas.ActualHeight,Root.ActualHeight)) };
             trace.Add($"{clock.Elapsed.TotalMilliseconds:F1},{rect.X},{rect.Y},{rect.Width},{rect.Height},{rect.Y+rect.Height}");
             if(t>=1)break;
             await Task.Delay(10);await NextFrameAsync();
         }
         if(generation==geometryGeneration && AppWindow.IsVisible) {
-            Reveal(target.Y-envelopeTop,target.Height);visiblePageBounds=target;
+            AppWindow.MoveAndResize(target);canvas.Margin=new Thickness(0);SetWindowRgn(hwnd,IntPtr.Zero,true);
             Root.UpdateLayout();await NextFrameAsync();
         }
         motion.Stop();canvas.Opacity=1;transform.Y=0;
@@ -566,7 +556,7 @@ public sealed partial class MainWindow : Window
             var dir=Path.GetDirectoryName(args[Array.IndexOf(args,"--capture")+1])!;
             File.AppendAllLines(Path.Combine(dir,"navigation-geometry.csv"),new[]{$"PAGE,{view},{start.Height},{target.Height},{steps},{clock.ElapsedMilliseconds}"}.Concat(trace));
             if(start.Height!=target.Height && steps<3)throw new InvalidOperationException("Page size changed without intermediate animation frames");
-            if(AppWindow.IsVisible && (visiblePageBounds?.Height!=target.Height || visiblePageBounds?.Y!=target.Y))throw new InvalidOperationException("Page animation missed its final bounds");
+            if(AppWindow.IsVisible && (AppWindow.Size.Height!=target.Height || AppWindow.Position.Y!=target.Y))throw new InvalidOperationException("Page animation missed its final bounds");
         }
     }
 
@@ -872,10 +862,7 @@ public sealed partial class MainWindow : Window
         theme.SelectionChanged += (_, _) => { string chosen = theme.SelectedIndex switch { 1 => "light", 2 => "dark", _ => "system" }; if (chosen == settings.Theme) return; settings.Theme = chosen; settings.Save(); Render(); };
         stack.Children.Add(theme);
         stack.Children.Add(AccentPicker());
-        stack.Children.Add(Text(L.Ar ? "التحديثات" : "Updates",14,true));
-        stack.Children.Add(ToggleRow(L.Ar ? "البحث التلقائي عن التحديثات" : "Automatically check for updates",settings.AutoCheckUpdates,on=>{settings.AutoCheckUpdates=on;settings.Save();}));
-        stack.Children.Add(Text(L.Ar ? "بعد 45 ثانية من التشغيل، ثم كل 6 ساعات. التنزيل والتثبيت بقرارك." : "45 seconds after launch, then every 6 hours. Download and install only when you choose.",12,false,SecondaryText));
-        stack.Children.Add(UpdateButton());
+
 
         stack.Children.Add(new TextBlock { Height = 4 });
         stack.Children.Add(Text(L.T("settings.buttons"), 14, true));
@@ -897,10 +884,13 @@ public sealed partial class MainWindow : Window
         var logs = new Button { Content = L.Ar ? "فتح سجل التشخيص" : "Open diagnostic log", HorizontalAlignment = HorizontalAlignment.Stretch };
         logs.Click += (_, _) => OpenUrl(DiagnosticLog.Path);
         stack.Children.Add(logs);
-        stack.Children.Add(UpdateButton());
         var exit = new Button { Content = L.T("settings.exit"), HorizontalAlignment = HorizontalAlignment.Stretch, Margin = new Thickness(0, 6, 0, 0) };
         exit.Click += (_, _) => ExitApp();
         stack.Children.Add(exit);
+        stack.Children.Add(Text(L.Ar ? "التحديثات" : "Updates",14,true));
+        stack.Children.Add(ToggleRow(L.Ar ? "البحث التلقائي عن التحديثات" : "Automatically check for updates",settings.AutoCheckUpdates,on=>{settings.AutoCheckUpdates=on;settings.Save();}));
+        stack.Children.Add(Text(L.Ar ? "بعد 45 ثانية من التشغيل، ثم كل 6 ساعات. التنزيل والتثبيت بقرارك." : "45 seconds after launch, then every 6 hours. Download and install only when you choose.",12,false,SecondaryText));
+        stack.Children.Add(UpdateButton());
         return new ScrollViewer { Content = stack, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Padding = new Thickness(0, 0, 12, 0) };
     }
 
@@ -932,6 +922,8 @@ public sealed partial class MainWindow : Window
         var contrib = Text(L.T("about.contrib"), 13, false); contrib.HorizontalAlignment = HorizontalAlignment.Center; contrib.TextAlignment = TextAlignment.Center; contrib.TextWrapping = TextWrapping.Wrap; stack.Children.Add(contrib);
         var credit = Text(L.T("about.credit"), 13, false, SecondaryText); credit.HorizontalAlignment = HorizontalAlignment.Center; stack.Children.Add(credit);
         var note = Text(L.T("about.note"), 12, false, SecondaryText); note.TextAlignment = TextAlignment.Center; note.Margin = new Thickness(8, 12, 8, 0); stack.Children.Add(note);
+        var repo=new HyperlinkButton { Content=L.Ar ? "المشروع على GitHub" : "View project on GitHub",NavigateUri=new Uri("https://github.com/MohamedElnaggar00/Fluent-Vantage-Toolbar"),HorizontalAlignment=HorizontalAlignment.Center };
+        stack.Children.Add(repo);
         stack.Children.Add(UpdateButton());
         return new ScrollViewer { Content=stack, VerticalScrollBarVisibility=ScrollBarVisibility.Auto };
     }
