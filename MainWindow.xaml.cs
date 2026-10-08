@@ -66,22 +66,22 @@ public sealed partial class MainWindow : Window
         if (AppWindow.Presenter is OverlappedPresenter presenter) { presenter.SetBorderAndTitleBar(true, false); presenter.IsResizable = false; presenter.IsMaximizable = false; presenter.IsMinimizable = false; presenter.IsAlwaysOnTop = true; }
         HideFromTaskbar();
         double scale = GetDpiForWindow(hwnd) / 96d;
-        AppWindow.Resize(new SizeInt32((int)(520 * scale), (int)(520 * scale)));
+        AppWindow.ResizeClient(new SizeInt32((int)(520 * scale), (int)(520 * scale)));
 
         Root.Padding = new Thickness(24, 8, 24, 20);
         Root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         Root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-        canvas = new Grid { Width = 472, Height = 492 };
+        canvas = new Grid { Height = 492 };
         canvas.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         canvas.RowDefinitions.Add(new RowDefinition());
         canvas.Children.Add(titleBar); Grid.SetRow(body, 1); canvas.Children.Add(body);
         Root.RowDefinitions.Clear(); Root.Padding = new Thickness(24, 8, 24, 20);
-        canvas.HorizontalAlignment = HorizontalAlignment.Center; Root.Children.Add(canvas);
+        canvas.HorizontalAlignment = HorizontalAlignment.Stretch; Root.Children.Add(canvas);
         // Flyout uses a compact custom caption row; the gear and X share one baseline.
         if (preview)
         {
-            Root.Width = 520; Root.Height = 520;
-            AppWindow.Resize(new SizeInt32((int)(520 * scale), (int)(520 * scale)));
+
+            AppWindow.ResizeClient(new SizeInt32((int)(520 * scale), (int)(520 * scale)));
             Root.Background = new SolidColorBrush(args.Contains("--dark") ? Windows.UI.Color.FromArgb(255, 32, 32, 32) : Windows.UI.Color.FromArgb(255, 243, 243, 243));
         }
         ApplyTheme();
@@ -93,7 +93,8 @@ public sealed partial class MainWindow : Window
         Activated += (_, e) => { if (e.WindowActivationState == WindowActivationState.Deactivated && !preview && !dialogOpen) HideFlyout(); };
         Root.ActualThemeChanged += (_, _) => { if (!preview) Render(); };
         timer.Tick += async (_, _) => { if (AppWindow.IsVisible && view == "main") await Refresh(); };
-        Root.Loaded += async (_, _) => { if (preview) await Capture();  };
+        Root.SizeChanged += (_, _) => DiagnosticLog.Write($"Layout dpi={GetDpiForWindow(hwnd)} outer={AppWindow.Size.Width}x{AppWindow.Size.Height} client={AppWindow.ClientSize.Width}x{AppWindow.ClientSize.Height} root={Root.ActualWidth}x{Root.ActualHeight} canvas={canvas.ActualWidth}x{canvas.ActualHeight}");
+        Root.Loaded += async (_, _) => { if (preview) await Capture(); };
 
         Render();
         if (!preview)
@@ -305,8 +306,8 @@ public sealed partial class MainWindow : Window
         double scale = Math.Max(1, GetDpiForWindow(hwnd) / 96d);
         double height = Math.Min(requested, area.Height / scale - 16);
         canvas.Height = Math.Max(100, height - 28);
-        if (preview) { Root.Width = 520; Root.Height = height; }
-        AppWindow.Resize(new SizeInt32((int)(520 * scale), (int)(height * scale)));
+
+        AppWindow.ResizeClient(new SizeInt32((int)(520 * scale), (int)(height * scale)));
         if (!preview && tray != null && tray.TryGetAnchor(out int x, out int y)) {
             var work = DisplayArea.GetFromPoint(new PointInt32(x, y), DisplayAreaFallback.Nearest).WorkArea;
             int left = Math.Clamp(x - AppWindow.Size.Width / 2, work.X, Math.Max(work.X, work.X + work.Width - AppWindow.Size.Width));
