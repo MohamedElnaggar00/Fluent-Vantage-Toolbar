@@ -136,7 +136,7 @@ public sealed partial class MainWindow : Window
     Task AnimateFlyout(bool show)
     {
         flyoutMotion?.Stop();
-        if((preview && !args.Contains("--interactive")) || !new Windows.UI.ViewManagement.UISettings().AnimationsEnabled){Root.Opacity=1;Root.RenderTransform=new TranslateTransform();return Task.CompletedTask;}
+        if(!MotionEnabled){Root.Opacity=1;Root.RenderTransform=new TranslateTransform();return Task.CompletedTask;}
         var transform=new TranslateTransform();Root.RenderTransform=transform;
         var motion=new Microsoft.UI.Xaml.Media.Animation.Storyboard();flyoutMotion=motion;
         double time=show?220:170;
@@ -300,7 +300,7 @@ public sealed partial class MainWindow : Window
 
     bool pageNavigating;
     Image? outgoingPage;
-    bool MotionEnabled => (!preview || args.Contains("--interactive")) && new Windows.UI.ViewManagement.UISettings().AnimationsEnabled;
+    bool MotionEnabled => preview ? args.Contains("--interactive") : new Windows.UI.ViewManagement.UISettings().AnimationsEnabled;
 
     async void Navigate(string target) => await NavigateAsync(target);
 
