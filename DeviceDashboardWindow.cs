@@ -27,6 +27,7 @@ internal sealed class DeviceDashboardWindow : UserControl
     string warrantyStatus="";
     bool reveal,loadingWarranty,closed;
     TextBlock? serialText;
+    Button? serialToggle;
     readonly Button reload=new(){Content="Refresh",HorizontalAlignment=HorizontalAlignment.Right};
     [DllImport("user32.dll")] static extern uint GetDpiForWindow(IntPtr hwnd);
     bool Dark=>root.ActualTheme==ElementTheme.Dark;
@@ -40,7 +41,7 @@ internal sealed class DeviceDashboardWindow : UserControl
         root.RequestedTheme=theme switch{"dark"=>ElementTheme.Dark,"light"=>ElementTheme.Light,_=>ElementTheme.Default};
         root.FlowDirection=L.Ar?FlowDirection.RightToLeft:FlowDirection.LeftToRight;
         root.Padding=new Thickness(0,0,12,0);root.RowDefinitions.Add(new(){Height=GridLength.Auto});root.RowDefinitions.Add(new());
-        var header=new Grid{Margin=new Thickness(0,0,0,18),ColumnSpacing=16};header.ColumnDefinitions.Add(new());header.ColumnDefinitions.Add(new(){Width=GridLength.Auto});header.Children.Add(Text(Title,20,true));Grid.SetColumn(reload,1);
+        var header=new Grid{Margin=new Thickness(0,0,0,18),ColumnSpacing=16};header.ColumnDefinitions.Add(new());header.ColumnDefinitions.Add(new(){Width=GridLength.Auto});Grid.SetColumn(reload,1);
         reload.Content=T("Refresh","تحديث");reload.Click+=async(_,_)=>await Load();header.Children.Add(reload);
         root.Children.Add(header);scroll.Content=columns;Grid.SetRow(scroll,1);root.Children.Add(scroll);Content=root;
         var stacked=new StackPanel{Spacing=14};foreach(var lane in lanes)stacked.Children.Add(lane);scroll.Content=stacked;
@@ -64,7 +65,7 @@ internal sealed class DeviceDashboardWindow : UserControl
         var device=snapshot.Cards.FirstOrDefault(c=>c.Title=="Device");
         if(device!=null){var contents=Fields(device.Fields);var serialRow=new Grid{ColumnSpacing=12};serialRow.ColumnDefinitions.Add(new());serialRow.ColumnDefinitions.Add(new(){Width=GridLength.Auto});
             serialText=Text("",14);serialText.IsTextSelectionEnabled=false;serialRow.Children.Add(serialText);UpdateSerial();
-            var toggle=new Button{Content=T(reveal?"Hide":"Reveal",reveal?"إخفاء":"إظهار")};Grid.SetColumn(toggle,1);toggle.Click+=(_,_)=>{reveal=!reveal;UpdateSerial();toggle.Content=T(reveal?"Hide":"Reveal",reveal?"إخفاء":"إظهار");};serialRow.Children.Add(toggle);contents.Children.Add(serialRow);
+            var toggle=new Button{Content=T(reveal?"Hide":"Reveal",reveal?"إخفاء":"إظهار")};serialToggle=toggle;Grid.SetColumn(toggle,1);toggle.Click+=(_,_)=>{reveal=!reveal;UpdateSerial();toggle.Content=T(reveal?"Hide":"Reveal",reveal?"إخفاء":"إظهار");};serialRow.Children.Add(toggle);contents.Children.Add(serialRow);
             lanes[0].Children.Add(Card(T("Device","الجهاز"),device.Icon,contents));}
         lanes[0].Children.Add(WarrantyCard());
         if(fixture)lanes[0].Children.Add(Text(T("Visual fixture only. Values are sample data, not this PC.","معاينة ببيانات تجريبية فقط، ليست بيانات هذا الجهاز."),12));
@@ -90,7 +91,7 @@ internal sealed class DeviceDashboardWindow : UserControl
         foreach(var c in snapshot.Cards.Where(c=>c.Title.StartsWith("Battery")))foreach(var field in c.Fields)b.Children.Add(Row(field.Label,field.Value));
         lanes[2].Children.Add(Card(T("Battery details","تفاصيل البطارية"),"\uE83F",b));foreach(var c in networkCards)lanes[2].Children.Add(Card(c.Title,c.Icon,Fields(c.Fields)));Reflow();
     }
-    void UpdateSerial(){if(serialText==null)return;serialText.Text=T("Serial number: ","الرقم التسلسلي: ")+(reveal?(snapshot?.Serial is {Length:>0} s?s:"Unavailable"):"••••••••");serialText.IsTextSelectionEnabled=reveal;}
+    void UpdateSerial(){if(serialText==null)return;serialText.Text=T("Serial number: ","الرقم التسلسلي: ")+(reveal?(snapshot?.Serial is {Length:>0} s?s:"Unavailable"):"••••••••");serialText.IsTextSelectionEnabled=reveal;if(serialToggle!=null)serialToggle.Content=T(reveal?"Hide":"Reveal",reveal?"إخفاء":"إظهار");}
     UIElement WarrantyCard()
     {
         var p=new StackPanel{Spacing=10};string Date(DateTime? d)=>d?.ToString("yyyy-MM-dd")??T("Unavailable","غير متاح");
