@@ -56,18 +56,16 @@ var
   ExitCode: Integer;
 begin
   Result := '';
-  { New releases signal the tray instance directly. Earlier versions are closed
-    by Inno Setup's Restart Manager (force close enabled for this executable). }
-  if FileExists(ExpandConstant('{app}\FluentLegionToolbar.exe')) then
-    Exec(ExpandConstant('{app}\FluentLegionToolbar.exe'), '--shutdown', '', SW_HIDE, ewWaitUntilTerminated, ExitCode);
-  { Compatibility with 0.2.x: those releases treat WM_CLOSE as hide-to-tray.
-    Limit the fallback to the installed executable path, never all same-name apps. }
-  Exec('powershell.exe', '-NoProfile -NonInteractive -Command "' +
-    '$target=' + #39 + ExpandConstant('{app}\FluentLegionToolbar.exe') + #39 + '; ' +
-    '$apps=@(Get-Process FluentLegionToolbar -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $target }); ' +
-    'foreach($p in $apps) { $p.CloseMainWindow() | Out-Null; if(-not $p.WaitForExit(3000)) { $p.Kill(); $p.WaitForExit(5000) | Out-Null } }"',
-    '', SW_HIDE, ewWaitUntilTerminated, ExitCode);
-  if ExitCode <> 0 then Result := 'Could not close the running toolbar. Close it and try the update again.';
+  { Standard elevated process termination works with older hide-to-tray builds,
+    portable copies and different installation paths. No dependency on new IPC. }
+  Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /T /IM FluentLegionToolbar.exe', '', SW_HIDE, ewWaitUntilTerminated, ExitCode);
+  { taskkill returns nonzero when there is no instance. Verify absence separately. }
+  if not Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
+    '-NoProfile -NonInteractive -Command "if(Get-Process -Name FluentLegionToolbar -ErrorAction SilentlyContinue){exit 1}else{exit 0}"',
+    '', SW_HIDE, ewWaitUntilTerminated, ExitCode) then
+    Result := 'Could not verify toolbar shutdown. Close the toolbar and retry.'
+  else if ExitCode <> 0 then
+    Result := 'A toolbar instance is still running. Close it and retry.';
 end;
 
 #if Str(Bundled) == "0"
