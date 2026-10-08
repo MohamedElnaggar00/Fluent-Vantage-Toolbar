@@ -114,6 +114,8 @@ jobs:
           $tag = "v$v"
           gh release view $tag *> $null
           if($LASTEXITCODE -eq 0) { throw "Release $tag already exists. Bump the version before publishing; old releases are immutable." }
+          $existingTag = git ls-remote --tags origin "refs/tags/$tag"
+          if($existingTag) { throw "Tag $tag already exists. Choose a fresh version; old tags are immutable." }
           $notes = @"
           Fluent Vantage Toolbar $v (private build, built from commit ${{ github.sha }}).
 
