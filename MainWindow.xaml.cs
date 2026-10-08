@@ -42,6 +42,8 @@ public sealed partial class MainWindow : Window
     bool warrantyLoading;
     bool busy, dialogOpen, exiting, checkingUpdates;
     readonly List<Button> updateButtons = new();
+    readonly CancellationTokenSource updateLifetime=new();
+    UpdateNoticeWindow? updateNotice;
     int animationGeneration;
     Microsoft.UI.Xaml.Media.Animation.Storyboard? flyoutMotion;
     string view = "main";
@@ -99,7 +101,7 @@ public sealed partial class MainWindow : Window
         tray.IsDark=()=>Dark;
         tray.NativeTip = true; tray.SetTip("Fluent Vantage Toolbar");
         AppWindow.Closing += (_, e) => { if (!exiting && !preview) { e.Cancel = true; HideFlyout(); } };
-        Closed += (_, _) => { contextMenu?.Close();timer.Stop(); tray.Dispose(); };
+        Closed += (_, _) => { updateLifetime.Cancel();updateNotice?.Close();contextMenu?.Close();timer.Stop(); tray.Dispose(); };
         Activated += (_, e) => { if (e.WindowActivationState == WindowActivationState.Deactivated && !preview && !dialogOpen && !pageNavigating) HideFlyout(); };
         Root.ActualThemeChanged += (_, _) => { if (!preview) Render(); };
         timer.Tick += async (_, _) => { if (AppWindow.IsVisible && view == "main") await Refresh(); };
@@ -110,6 +112,7 @@ public sealed partial class MainWindow : Window
         if (!preview)
         {
             timer.Start();
+            _ = AutomaticUpdatesAsync(updateLifetime.Token);
             _ = Refresh();
             ListenForShowRequests();
             ListenForExitRequests();
@@ -208,8 +211,54 @@ public sealed partial class MainWindow : Window
 
     void ApplyTheme()
     {
+        ApplyAccent();
         Root.RequestedTheme = settings.Theme switch { "light" => ElementTheme.Light, "dark" => ElementTheme.Dark, _ => ElementTheme.Default };
         Root.FlowDirection = L.Ar ? FlowDirection.RightToLeft : FlowDirection.LeftToRight;
+    }
+
+    static Windows.UI.Color? ParseAccent(string? hex)
+    {
+        if(hex?.Length!=7 || hex[0]!='#' || !uint.TryParse(hex[1..],NumberStyles.HexNumber,CultureInfo.InvariantCulture,out uint rgb))return null;
+        return Windows.UI.Color.FromArgb(255,(byte)(rgb>>16),(byte)(rgb>>8),(byte)rgb);
+    }
+    void ApplyAccent()
+    {
+        var resources=Application.Current.Resources;
+        string[] names={"SystemAccentColor","SystemAccentColorLight1","SystemAccentColorLight2","SystemAccentColorLight3","SystemAccentColorDark1","SystemAccentColorDark2","SystemAccentColorDark3"};
+        var color=ParseAccent(settings.AccentColor);
+        foreach(string name in names){if(color.HasValue)resources[name]=color.Value;else resources.Remove(name);}
+        string[] brushes={"SystemControlHighlightAccentBrush","AccentFillColorDefaultBrush","AccentFillColorSecondaryBrush","AccentFillColorTertiaryBrush","HyperlinkForeground","ToggleSwitchFillOn"};
+        foreach(string name in brushes){if(color.HasValue)resources[name]=new SolidColorBrush(color.Value);else resources.Remove(name);}
+    }
+    UIElement AccentPicker()
+    {
+        var stack=new StackPanel { Spacing=10 };
+        stack.Children.Add(Text(L.Ar ? "لون التطبيق" : "Accent color",14,true));
+        var swatches=new StackPanel { Orientation=Orientation.Horizontal,Spacing=8 };
+        foreach(string hex in new[]{"#0078D4","#00A6A6","#744DA9","#D83B01","#C239B3","#107C10"}) {
+            var button=new Button { Width=40,Height=40,Padding=new Thickness(3),Background=new SolidColorBrush(ParseAccent(hex)!.Value),
+                BorderBrush=Primary,BorderThickness=new Thickness(settings.AccentColor==hex?3:0),Content=settings.AccentColor==hex ? "✓" : "",Foreground=new SolidColorBrush(Colors.White) };
+            ToolTipService.SetToolTip(button,hex);
+            button.Click+=(_,_)=>{settings.AccentColor=hex;settings.Save();dashboard=null;Render();};swatches.Children.Add(button);
+        }
+        stack.Children.Add(swatches);
+        var actions=new StackPanel { Orientation=Orientation.Horizontal,Spacing=8 };
+        var custom=new Button { Content=L.Ar ? "لون مخصص" : "Custom color" };
+        custom.Click+=async(_,_)=>{
+            var picker=new ColorPicker { IsAlphaEnabled=false,IsColorSpectrumVisible=true,IsColorSliderVisible=true,IsHexInputVisible=true,
+                Color=ParseAccent(settings.AccentColor) ?? new Windows.UI.ViewManagement.UISettings().GetColorValue(Windows.UI.ViewManagement.UIColorType.Accent),MaxWidth=380 };
+            dialogOpen=true;
+            try {
+                var dialog=new ContentDialog { XamlRoot=Root.XamlRoot,Title=L.Ar ? "اختر لون التطبيق" : "Choose accent color",Content=picker,
+                    PrimaryButtonText=L.Ar ? "تطبيق" : "Apply",CloseButtonText=L.Ar ? "إلغاء" : "Cancel",DefaultButton=ContentDialogButton.Primary };
+                if(await dialog.ShowAsync()==ContentDialogResult.Primary){settings.AccentColor=$"#{picker.Color.R:X2}{picker.Color.G:X2}{picker.Color.B:X2}";settings.Save();dashboard=null;Render();}
+            } finally {dialogOpen=false;}
+        };
+        var reset=new Button { Content=L.Ar ? "استعادة الافتراضي" : "Restore default" };
+        reset.Click+=(_,_)=>{settings.AccentColor=null;settings.Save();dashboard=null;Render();};
+        actions.Children.Add(custom);actions.Children.Add(reset);stack.Children.Add(actions);
+        stack.Children.Add(Text(settings.AccentColor ?? (L.Ar ? "لون Windows الافتراضي" : "Windows default accent"),12,false,SecondaryText));
+        return Card(stack,new Thickness(14));
     }
 
     // ---- device ----
@@ -601,7 +650,7 @@ public sealed partial class MainWindow : Window
     FrameworkElement MakeTile(TileDef tile)
     {
         var button = new ToggleButton { Width = 56, Height = 56, CornerRadius = new CornerRadius(28), HorizontalAlignment = HorizontalAlignment.Center, IsEnabled = false, Padding = new Thickness(0) };
-        button.Resources["ToggleButtonBackgroundChecked"] = Rgb(156, 218, 155);
+        button.Resources["ToggleButtonBackgroundChecked"] = ParseAccent(settings.AccentColor) is {} accent ? new SolidColorBrush(accent) : Rgb(156, 218, 155);
         button.Resources["ToggleButtonBackgroundCheckedPointerOver"] = Rgb(140, 205, 139);
         button.Resources["ToggleButtonBackgroundCheckedPressed"] = Rgb(123, 190, 123);
         button.Resources["ToggleButtonForegroundChecked"] = Rgb(20, 55, 27);
@@ -664,9 +713,9 @@ public sealed partial class MainWindow : Window
             if (!tileButtons.TryGetValue(id, out var button)) return;
             button.IsEnabled = supported && !preview;
             button.IsChecked = state ?? false;
-            if (button.Content is FontIcon glyph) glyph.Foreground = state == true ? Rgb(20, 55, 27) : Primary;
+            if (button.Content is FontIcon glyph) glyph.Foreground = state == true ? (ParseAccent(settings.AccentColor).HasValue ? Rgb(255,255,255) : Rgb(20,55,27)) : Primary;
             if (id == "fn" && button.Content is Grid lockGrid) foreach (var child in lockGrid.Children) {
-                Brush ink = state == true ? Rgb(20, 55, 27) : Primary;
+                Brush ink = state == true ? (ParseAccent(settings.AccentColor).HasValue ? Rgb(255,255,255) : Rgb(20,55,27)) : Primary;
                 if (child is Microsoft.UI.Xaml.Shapes.Path path) path.Stroke = ink;
                 if (child is Border outline) outline.BorderBrush = ink;
                 if (child is TextBlock fnLabel) fnLabel.Foreground = ink;
@@ -697,19 +746,63 @@ public sealed partial class MainWindow : Window
         button.Click+=async (_,_)=>await CheckForUpdatesAsync();updateButtons.Add(button);return button;
     }
     static Version? ReleaseVersion(string? tag) => Version.TryParse(tag?.TrimStart('v','V'),out var version) ? version : null;
-    static string? UpdateDownload(System.Text.Json.JsonElement release, Version installed)
+    static string? UpdateDownload(System.Text.Json.JsonElement release, Version installed,bool bundled=true)
     {
         if(release.GetProperty("draft").GetBoolean() || release.GetProperty("prerelease").GetBoolean())return null;
         var next=ReleaseVersion(release.GetProperty("tag_name").GetString());
         if(next==null || next<=installed)return null;
         foreach(var asset in release.GetProperty("assets").EnumerateArray()) {
             var name=asset.GetProperty("name").GetString();
-            if(name!=$"FluentVantageToolbar-{next.ToString(3)}-Setup-with-dotnet.exe")continue;
+            if(name!=$"FluentVantageToolbar-{next.ToString(3)}-Setup{(bundled ? "-with-dotnet" : "")}.exe")continue;
             var url=asset.GetProperty("browser_download_url").GetString();
             if(Uri.TryCreate(url,UriKind.Absolute,out var uri) && uri.Scheme=="https" && uri.Host=="github.com" && uri.AbsolutePath.StartsWith("/MohamedElnaggar00/Fluent-Vantage-Toolbar/releases/download/",StringComparison.Ordinal))return url;
         }
-        throw new InvalidOperationException("New release has no supported bundled installer.");
+        throw new InvalidOperationException("New release has no installer matching this build flavor.");
     }
+    // Self-contained .NET builds carry coreclr.dll beside the executable;
+    // framework-dependent builds load it from the installed shared runtime.
+    bool InstalledBundled => File.Exists(Path.Combine(AppContext.BaseDirectory,"coreclr.dll"));
+    async Task AutomaticUpdatesAsync(CancellationToken token)
+    {
+        try {
+            await Task.Delay(TimeSpan.FromSeconds(45),token);
+            while(!token.IsCancellationRequested) {
+                if(settings.AutoCheckUpdates)await CheckAutomaticUpdateAsync();
+                await Task.Delay(TimeSpan.FromHours(6),token);
+            }
+        } catch(OperationCanceledException) { }
+    }
+    async Task CheckAutomaticUpdateAsync()
+    {
+        if(preview || exiting || checkingUpdates || !settings.AutoCheckUpdates)return;
+        checkingUpdates=true;
+        try {
+            using var http=new System.Net.Http.HttpClient { Timeout=TimeSpan.FromSeconds(20) };
+            http.DefaultRequestHeaders.UserAgent.ParseAdd("FluentVantageToolbar/"+(typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? "0.0.0"));
+            http.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
+            using var response=await http.GetAsync("https://api.github.com/repos/MohamedElnaggar00/Fluent-Vantage-Toolbar/releases/latest",updateLifetime.Token);
+            response.EnsureSuccessStatusCode();
+            using var json=System.Text.Json.JsonDocument.Parse(await response.Content.ReadAsStringAsync(updateLifetime.Token));
+            var installed=ReleaseVersion(typeof(MainWindow).Assembly.GetName().Version?.ToString(3)) ?? new Version(0,0,0);
+            var url=UpdateDownload(json.RootElement,installed,InstalledBundled);
+            var tag=json.RootElement.GetProperty("tag_name").GetString();
+            if(url==null || !settings.AutoCheckUpdates || exiting || tag==settings.LastNotifiedUpdate)return;
+            ShowUpdateNotice(tag ?? "",url);
+            settings.LastNotifiedUpdate=tag;settings.Save();
+        } catch(OperationCanceledException) { }
+        catch(Exception error) { DiagnosticLog.Write("Automatic update check failed: "+error.Message); }
+        finally {checkingUpdates=false;}
+    }
+    void ShowUpdateNotice(string version,string url)
+    {
+        updateNotice?.Close();
+        updateNotice=new UpdateNoticeWindow(version,url,L.Ar,Dark,preview);
+        if(!preview) {
+            tray.Notify(L.Ar ? "يتوفر تحديث جديد" : "Update available",$"Fluent Vantage Toolbar {version}");
+            updateNotice.ShowNotice();
+        }
+    }
+
     async Task CheckForUpdatesAsync()
     {
         if(checkingUpdates || preview)return;
@@ -724,7 +817,7 @@ public sealed partial class MainWindow : Window
             response.EnsureSuccessStatusCode();
             using var json=System.Text.Json.JsonDocument.Parse(await response.Content.ReadAsStringAsync());
             var installed=ReleaseVersion(typeof(MainWindow).Assembly.GetName().Version?.ToString(3)) ?? new Version(0,0,0);
-            var url=UpdateDownload(json.RootElement,installed);
+            var url=UpdateDownload(json.RootElement,installed,InstalledBundled);
             if(url==null)message=L.Ar ? "أنت تستخدم أحدث إصدار." : "You're using the latest release.";
             else {
                 Process.Start(new ProcessStartInfo(url){UseShellExecute=true});
@@ -760,6 +853,11 @@ public sealed partial class MainWindow : Window
         theme.SelectedIndex = settings.Theme switch { "light" => 1, "dark" => 2, _ => 0 };
         theme.SelectionChanged += (_, _) => { string chosen = theme.SelectedIndex switch { 1 => "light", 2 => "dark", _ => "system" }; if (chosen == settings.Theme) return; settings.Theme = chosen; settings.Save(); Render(); };
         stack.Children.Add(theme);
+        stack.Children.Add(AccentPicker());
+        stack.Children.Add(Text(L.Ar ? "التحديثات" : "Updates",14,true));
+        stack.Children.Add(ToggleRow(L.Ar ? "البحث التلقائي عن التحديثات" : "Automatically check for updates",settings.AutoCheckUpdates,on=>{settings.AutoCheckUpdates=on;settings.Save();}));
+        stack.Children.Add(Text(L.Ar ? "بعد 45 ثانية من التشغيل، ثم كل 6 ساعات. التنزيل والتثبيت بقرارك." : "45 seconds after launch, then every 6 hours. Download and install only when you choose.",12,false,SecondaryText));
+        stack.Children.Add(UpdateButton());
 
         stack.Children.Add(new TextBlock { Height = 4 });
         stack.Children.Add(Text(L.T("settings.buttons"), 14, true));
@@ -953,10 +1051,12 @@ public sealed partial class MainWindow : Window
     {
         // Offline decision tests never download or launch an installer during captures.
         string fixture="""
-        {"draft":false,"prerelease":false,"tag_name":"v9.0.0","assets":[{"name":"FluentVantageToolbar-9.0.0-Setup-with-dotnet.exe","browser_download_url":"https://github.com/MohamedElnaggar00/Fluent-Vantage-Toolbar/releases/download/v9.0.0/FluentVantageToolbar-9.0.0-Setup-with-dotnet.exe"}]}
+        {"draft":false,"prerelease":false,"tag_name":"v9.0.0","assets":[{"name":"FluentVantageToolbar-9.0.0-Setup.exe","browser_download_url":"https://github.com/MohamedElnaggar00/Fluent-Vantage-Toolbar/releases/download/v9.0.0/FluentVantageToolbar-9.0.0-Setup.exe"},{"name":"FluentVantageToolbar-9.0.0-Setup-with-dotnet.exe","browser_download_url":"https://github.com/MohamedElnaggar00/Fluent-Vantage-Toolbar/releases/download/v9.0.0/FluentVantageToolbar-9.0.0-Setup-with-dotnet.exe"}]}
         """;
         using(var test=System.Text.Json.JsonDocument.Parse(fixture)) {
             if(UpdateDownload(test.RootElement,new Version(1,0,0))==null || UpdateDownload(test.RootElement,new Version(9,0,0))!=null || UpdateDownload(test.RootElement,new Version(10,0,0))!=null)throw new InvalidOperationException("Update version comparison failed");
+            if(!UpdateDownload(test.RootElement,new Version(1,0,0),false)!.EndsWith("-Setup.exe") || !UpdateDownload(test.RootElement,new Version(1,0,0),true)!.EndsWith("-Setup-with-dotnet.exe"))throw new InvalidOperationException("Installed update flavor mismatch");
+            if(!new AppSettings().AutoCheckUpdates)throw new InvalidOperationException("Automatic updates must default on");
         }
         foreach(var replacement in new[]{fixture.Replace("\"draft\":false","\"draft\":true"),fixture.Replace("\"prerelease\":false","\"prerelease\":true")}) {
             using var test=System.Text.Json.JsonDocument.Parse(replacement);
@@ -1029,6 +1129,16 @@ public sealed partial class MainWindow : Window
         await devicePreview.PreviewPositionAsync(true);
         await SaveImage(Path.Combine(dir,"device-bottom-"+name));
 
+        foreach(string accent in new[]{"#0078D4","#744DA9"}) {
+            settings.AccentColor=accent;view="settings";Render();await geometryReady;await Task.Delay(250);
+            await SaveImage(Path.Combine(dir,$"accent-{accent[1..]}-{name}"));
+        }
+        settings.AccentColor=null;ApplyAccent();
+        if(ParseAccent("#12ABEF") is not {} parsed || parsed.R!=0x12 || ParseAccent("invalid")!=null)throw new InvalidOperationException("Accent parsing failed");
+        using(var notice=new UpdateNoticeCaptureScope(new UpdateNoticeWindow("v9.0.0","https://github.com/MohamedElnaggar00/Fluent-Vantage-Toolbar/releases/download/v9.0.0/FluentVantageToolbar-9.0.0-Setup.exe",L.Ar,Dark,true))) {
+            notice.Window.ShowNotice();await Task.Delay(400);
+            await notice.Window.CaptureAsync(Path.Combine(dir,"update-notice-"+name));
+        }
         if(args.Contains("--interactive")) {
             settings.HiddenTiles=Tiles.Skip(5).Select(t=>t.Id).ToList();settings.ShowWarranty=true;
             view="main";Render();await geometryReady;
@@ -1056,5 +1166,42 @@ public sealed partial class MainWindow : Window
             File.AppendAllText(phases,$"PASS serialized geometry, three open/settings/main/hide cycles; unchanged refresh native resize count unchanged. Actual DPI={GetDpiForWindow(hwnd)}\n");
         }
         Close();
+    }
+}
+
+
+internal sealed class UpdateNoticeCaptureScope : IDisposable
+{
+    public UpdateNoticeWindow Window {get;}
+    public UpdateNoticeCaptureScope(UpdateNoticeWindow window){Window=window;}
+    public void Dispose()=>Window.Close();
+}
+internal sealed class UpdateNoticeWindow : Window
+{
+    readonly Grid root=new();
+    public UpdateNoticeWindow(string version,string url,bool arabic,bool dark,bool fixture)
+    {
+        Title="Fluent Vantage Toolbar";ExtendsContentIntoTitleBar=true;
+        root.Background=new SolidColorBrush(dark?Windows.UI.Color.FromArgb(255,32,32,32):Windows.UI.Color.FromArgb(255,243,243,243));
+        root.RequestedTheme=dark?ElementTheme.Dark:ElementTheme.Light;root.FlowDirection=arabic?FlowDirection.RightToLeft:FlowDirection.LeftToRight;
+        root.Padding=new Thickness(20);Content=root;
+        var stack=new StackPanel{Spacing=12};root.Children.Add(stack);
+        stack.Children.Add(new TextBlock{Text=arabic?"يتوفر تحديث جديد":"Update available",FontSize=18,FontWeight=Microsoft.UI.Text.FontWeights.SemiBold});
+        stack.Children.Add(new TextBlock{Text=$"Fluent Vantage Toolbar {version}",TextWrapping=TextWrapping.Wrap,FontSize=14});
+        stack.Children.Add(new TextBlock{Text=arabic?"التنزيل المباشر للنسخة المطابقة لتثبيتك. لن يتم التثبيت تلقائياً.":"Direct download for your installed build. Nothing installs automatically.",TextWrapping=TextWrapping.Wrap,FontSize=12});
+        var buttons=new StackPanel{Orientation=Orientation.Horizontal,Spacing=10};
+        var download=new Button{Content=arabic?"تحميل":"Download"};download.Click+=(_,_)=>{if(!fixture){try{Process.Start(new ProcessStartInfo(url){UseShellExecute=true});Close();}catch(Exception error){DiagnosticLog.Write("Update link failed: "+error.Message);}}};
+        var later=new Button{Content=arabic?"لاحقاً":"Later"};later.Click+=(_,_)=>Close();buttons.Children.Add(download);buttons.Children.Add(later);stack.Children.Add(buttons);
+        if(AppWindow.Presenter is OverlappedPresenter presenter){presenter.SetBorderAndTitleBar(true,false);presenter.IsResizable=false;presenter.IsMaximizable=false;presenter.IsMinimizable=false;presenter.IsAlwaysOnTop=true;}
+        double scale=GetScale();AppWindow.ResizeClient(new SizeInt32((int)(370*scale),(int)(230*scale)));AppWindow.IsShownInSwitchers=false;
+    }
+    [DllImport("user32.dll")] static extern uint GetDpiForWindow(IntPtr hwnd);
+    double GetScale()=>Math.Max(1,GetDpiForWindow(WinRT.Interop.WindowNative.GetWindowHandle(this))/96d);
+    public void ShowNotice(){var work=DisplayArea.Primary.WorkArea;AppWindow.Move(new PointInt32(work.X+work.Width-AppWindow.Size.Width-16,work.Y+work.Height-AppWindow.Size.Height-16));AppWindow.Show();}
+    public async Task CaptureAsync(string path) {
+        var bitmap=new Microsoft.UI.Xaml.Media.Imaging.RenderTargetBitmap();await bitmap.RenderAsync(root);
+        var buffer=await bitmap.GetPixelsAsync();using var reader=Windows.Storage.Streams.DataReader.FromBuffer(buffer);var pixels=new byte[buffer.Length];reader.ReadBytes(pixels);
+        using var stream=File.Open(path,FileMode.Create).AsRandomAccessStream();var encoder=await Windows.Graphics.Imaging.BitmapEncoder.CreateAsync(Windows.Graphics.Imaging.BitmapEncoder.PngEncoderId,stream);
+        encoder.SetPixelData(Windows.Graphics.Imaging.BitmapPixelFormat.Bgra8,Windows.Graphics.Imaging.BitmapAlphaMode.Premultiplied,(uint)bitmap.PixelWidth,(uint)bitmap.PixelHeight,96,96,pixels);await encoder.FlushAsync();
     }
 }
