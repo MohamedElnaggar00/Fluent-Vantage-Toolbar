@@ -12,6 +12,11 @@ on:
       - 'LICENSE'
       - '.gitignore'
   workflow_dispatch:
+    inputs:
+      replace_v035:
+        description: 'One-time owner-approved replacement of 0.3.5 margins only'
+        type: boolean
+        default: false
 permissions:
   contents: write
 concurrency:
@@ -143,9 +148,10 @@ jobs:
           $v = '${{ steps.ver.outputs.version }}'
           $tag = "v$v"
           gh release view $tag *> $null
-          if($LASTEXITCODE -eq 0) { throw "Release $tag already exists. Bump the version before publishing; old releases are immutable." }
+          $replace = '${{ github.event_name }}' -eq 'workflow_dispatch' -and '${{ inputs.replace_v035 }}' -eq 'true' -and $v -eq '0.3.5'
+          if($LASTEXITCODE -eq 0 -and -not $replace) { throw "Release $tag already exists. Bump the version before publishing; old releases are immutable." }
           $existingTag = git ls-remote --tags origin "refs/tags/$tag"
-          if($existingTag) { throw "Tag $tag already exists. Choose a fresh version; old tags are immutable." }
+          if($existingTag -and -not $replace) { throw "Tag $tag already exists. Choose a fresh version; old tags are immutable." }
           $notes = @"
           Fluent Vantage Toolbar $v (private build, built from commit ${{ github.sha }}).
 
@@ -155,5 +161,9 @@ jobs:
 
           Built by CI only. Not yet install-tested on every Legion model.
           "@
+          if($replace) {
+            gh release delete $tag --cleanup-tag --yes
+            if($LASTEXITCODE -ne 0) { throw 'Owner-approved 0.3.5 replacement could not remove old release/tag' }
+          }
           gh release create $tag (Get-ChildItem release).FullName --target ${{ github.sha }} --title "Fluent Vantage Toolbar $v" --notes $notes
           if($LASTEXITCODE -ne 0) { throw 'Release failed' }
