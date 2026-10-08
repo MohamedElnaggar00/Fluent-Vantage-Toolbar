@@ -1,0 +1,89 @@
+name: Release
+# Builds the three distribution flavors and publishes them to the GitHub Release
+# for the version in FluentLegionToolbar.csproj (<Version>). Runs after every push
+# to main that changes code (README/docs-only pushes are skipped), or manually.
+# Same version again: the release and its tag are recreated on the latest commit.
+# New version: bump <Version> in the csproj and a new release is created.
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'LICENSE'
+      - '.gitignore'
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: release
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - uses: microsoft/setup-msbuild@v2
+      - name: Read version from csproj
+        id: ver
+        shell: pwsh
+        run: |
+          $v = ([xml](Get-Content FluentLegionToolbar.csproj)).Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1
+          if(-not $v) { throw 'Version not found in FluentLegionToolbar.csproj' }
+          "version=$v" >> $env:GITHUB_OUTPUT
+          (Get-Content installer.iss) -replace '#define AppVersion ".*"', "#define AppVersion `"$v`"" | Set-Content installer.iss
+      - name: Publish framework-dependent and self-contained builds
+        shell: pwsh
+        run: |
+          function Publish($dir, $selfContained) {
+            msbuild FluentLegionToolbar.csproj /restore /t:Publish /p:Configuration=Release /p:Platform=x64 /p:RuntimeIdentifier=win-x64 /p:SelfContained=$selfContained /p:PublishDir="$dir/"
+            if($LASTEXITCODE -ne 0) { throw "Build failed: $dir" }
+            $buildDir=Join-Path $PWD 'bin/x64/Release/net8.0-windows10.0.19041.0/win-x64'
+            Get-ChildItem $buildDir -Recurse -Include *.xbf,*.pri | ForEach-Object {
+              $relative=$_.FullName.Substring($buildDir.Length+1)
+              $destination=Join-Path (Join-Path $PWD $dir) $relative
+              New-Item -ItemType Directory -Force (Split-Path $destination) | Out-Null
+              Copy-Item $_.FullName $destination -Force
+            }
+            if(-not(Test-Path "$dir/MainWindow.xbf")) { throw "Compiled XAML missing in $dir" }
+          }
+          Publish 'out-fd' 'false'
+          Remove-Item -Recurse -Force obj, bin
+          Publish 'out-sc' 'true'
+      - name: Package (zip + installers)
+        shell: pwsh
+        run: |
+          $v = '${{ steps.ver.outputs.version }}'
+          New-Item -ItemType Directory -Force release | Out-Null
+          Compress-Archive out-fd/* "release/FluentLegionToolbar-$v-portable-x64.zip"
+          choco install innosetup -y --no-progress
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          & $iscc installer.iss /DSourceDir=out-fd /DOutName=FluentLegionToolbar-Setup /DBundled=0
+          if($LASTEXITCODE -ne 0) { throw 'Installer build failed' }
+          & $iscc installer.iss /DSourceDir=out-sc /DOutName=FluentLegionToolbar-Setup-with-dotnet /DBundled=1
+          if($LASTEXITCODE -ne 0) { throw 'Bundled installer build failed' }
+          Move-Item installers/FluentLegionToolbar-Setup.exe "release/FluentLegionToolbar-$v-Setup.exe"
+          Move-Item installers/FluentLegionToolbar-Setup-with-dotnet.exe "release/FluentLegionToolbar-$v-Setup-with-dotnet.exe"
+          Get-ChildItem release | Select-Object Name,Length
+      - name: Publish GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $v = '${{ steps.ver.outputs.version }}'
+          $tag = "v$v"
+          gh release view $tag *> $null
+          if($LASTEXITCODE -eq 0) { gh release delete $tag --cleanup-tag --yes }
+          $notes = @"
+          Fluent Legion Toolbar $v (private build, built from commit ${{ github.sha }}).
+
+          - FluentLegionToolbar-$v-portable-x64.zip: no install, needs the .NET 8 Desktop Runtime.
+          - FluentLegionToolbar-$v-Setup.exe: installer, needs the .NET 8 Desktop Runtime (warns if missing).
+          - FluentLegionToolbar-$v-Setup-with-dotnet.exe: installer with .NET bundled, nothing else to install.
+
+          Built by CI only. Not yet install-tested on every Legion model.
+          "@
+          gh release create $tag (Get-ChildItem release).FullName --target ${{ github.sha }} --title "Fluent Legion Toolbar $v" --notes $notes
+          if($LASTEXITCODE -ne 0) { throw 'Release failed' }
