@@ -1,55 +1,121 @@
+<div align="center">
+
 # Fluent Vantage Toolbar
+### Your Legion. Your controls. One click from the tray.
 
-[العربية](README.ar.md)
+A small Windows 11-style toolbar for Lenovo **Legion** and **LOQ** laptops.
 
-An original WinUI 3 + Mica toolbar for Lenovo Legion laptops. Tested hardware so far: Legion 5 15ITH6H (82JH). It opens from a tray icon as a Windows 11 style flyout with quick hardware controls.
+[**Download**](../../releases) · [Features](#features) · [Screenshots](#screenshots) · [Compatibility](#compatibility) · [Installation](#installation) · [العربية](README.ar.md)
 
-## Status
-Private build shared with friends (version 0.2.0). The Windows build and the WinUI fixture captures (English and Arabic, light and dark) pass in CI and were visually inspected. Hardware controls and desktop Mica still need testing on the actual laptop. No public release.
+**Developed by Mohamed Elnaggar**  
+*brought to you by app.instinct AI*
 
-## What's new in 0.2.0
-- Lenovo Legion logo as app icon and tray icon.
-- Right-click tray menu: Open, Toolbar settings, About.
-- Settings page (gear icon at the top right of the flyout): language, theme, and which buttons and links show on the main screen.
-- Battery details page: current charge, health with bar, design capacity, full charge capacity, cycle count, manufacture date.
-- Warranty card: status, start date, end date, days remaining, Lenovo Support link. Read from Lenovo support with the machine serial number and cached locally.
-- Battery colour: green, yellow at 20% or below, red at 5% or below.
-- Fn Lock fixed using the same EnergyDrv control path as LenovoLegionToolkit, with a new tile icon.
-- The flyout does not appear in the taskbar.
-- Background start with administrator rights through Task Scheduler, no UAC prompt (see below).
-- English is the default language. The theme follows the Windows system theme by default. Languages: English, French, German, Italian, Spanish, Portuguese, Russian, Chinese (Simplified), Japanese, Arabic (right-to-left). Texts without a translation fall back to English.
+</div>
 
-## Run at sign-in with administrator rights (SkipUAC)
-1. Unzip the download fully into a permanent folder. Do not move it afterwards.
-2. Right-click `install-startup.ps1`, then "Run with PowerShell". It asks for administrator approval once.
-3. It creates two tasks: `FluentLegionToolbar` (at sign-in, background mode, highest privileges) and `FluentLegionToolbar-Open` (shows the flyout).
-4. To remove both, run `uninstall-startup.ps1`.
+---
 
-This is a resident tray process, not a Windows service. A WinUI window cannot run in the services session.
+## Why this project?
 
-## Supported devices
-The app targets Lenovo Legion laptops in general. It reads the machine model at runtime and shows it in the title. Hardware writes are enabled only on Lenovo machines whose name contains "Legion" or whose machine type appears in the Legion table of LenovoLegionToolkit (studied as evidence only). On any other machine the controls stay disabled and say why.
-Even on a recognised Legion, each control is probed on its own, read back after a change, and disabled if the model does not expose it. Different generations expose different features (for example rapid charge, touchpad lock or the 144 Hz panel mode), so some tiles may be disabled on your model. The only hardware tested so far is the Legion 5 15ITH6H. Reports from other models are welcome.
+Fluent Vantage Toolbar is an independent replacement for the familiar Lenovo Vantage Toolbar. The developer's motivation: recent Lenovo updates removed the old toolbar from his machine, so he built a modern tray-based alternative for the controls he uses every day.
 
-## Controls
-Fn Lock, mute all active microphones, battery conservation, rapid charge, touchpad lock, internal-panel 60/144 Hz and Always-on USB. Each control is checked for support and read back after a change. Unsupported controls are disabled and say so. The app does not stop Lenovo services, and it sends no charging or touchpad command to a different model.
+It is **not an official Lenovo product**, a fork of Lenovo Vantage, or a replacement for every feature in the full Vantage app. Hardware support depends on the laptop's firmware and drivers.
 
-## Distribution flavors
-The `Package private distribution` workflow (run it from Actions) builds three downloads into the `distribution` artifact:
-1. `FluentVantageToolbar-portable-x64.zip`: portable, no install. Needs the .NET 8 Desktop Runtime. Unzip to a permanent folder.
-2. `FluentVantageToolbar-Setup.exe`: one-click installer (Inno Setup). Needs the .NET 8 Desktop Runtime; the installer warns if it is missing.
-3. `FluentVantageToolbar-Setup-with-dotnet.exe`: installer with the .NET runtime bundled (self-contained build), so no separate .NET install is needed.
-Both installers install to Program Files, add a Start menu entry, and offer the no-UAC startup task. The task runs as the user who runs the installer. CI only builds these files; they are not install-tested on a real desktop yet.
+## Screenshots
 
-## Install and build
-Requires Windows 11 x64 and the .NET 8 Desktop Runtime. Open the latest successful `Verify private WinUI build` run in Actions and download `private-test-build-and-captures`. Unzip it, then unzip `Fluent-Vantage-Toolbar-runtime-dependent.zip` and run `FluentLegionToolbar.exe` from the complete folder.
+![Battery details, settings and About your device on the developer's Legion 5](1-fluent-vantage-screenshots.jpg)
 
-To build from source use Visual Studio MSBuild as in `.github/workflows/verify.yml`, including its compiled XAML and resource copy step.
+*Real screenshots from the developer's Legion 5 15ITH6H. Values shown belong to that device, not a promise about yours. These screenshots show v0.3.0; v0.3.1 updates the card icons and tray menu.*
 
-`--capture <file.png> --light|--dark --arabic` renders a real WinUI preview with fixture data and does not touch the hardware. The captures are not proof of hardware behaviour.
+## Features
 
-## Contributors
-- Mohamed Elnaggar: developer.
-- app.instinct: development contributor.
+| Everyday controls | What you get |
+| :--- | :--- |
+| Battery at a glance | Charge percentage and charging status in a compact flyout |
+| Conserve mode | Switch to the device's battery-conservation mode |
+| Rapid charging | Enable rapid charging where the firmware supports it |
+| Mute mic | Mute active Windows microphone capture endpoints |
+| Touchpad | Toggle the supported touchpad-lock route |
+| Fn Lock | A quick Fn Lock control with a readable lock icon |
+| Refresh rate | Use the internal panel's real supported rates, not a fixed 144 Hz assumption |
+| Always-on USB | Toggle the supported always-on USB mode |
 
-Hardware protocols were studied from LenovoLegionToolkit (GPL-3.0) as evidence only. This project is an independent implementation. See `SOURCES.md`.
+**Refresh rate and Always-on USB are hidden by default in v0.3.1.** Enable them in Settings if you want them. Existing saved choices are preserved.
+
+<details>
+<summary><b>Explore the device cards</b></summary>
+
+The **About your device** page stays inside the toolbar. Scroll through cards for:
+
+- Device identity, Windows version, BIOS and a masked serial number with a reveal button.
+- Warranty dates from a cached result, with an explicit Lenovo warranty-check button.
+- Platform and control availability, without guessing extra firmware features from a model name.
+- CPU, GPU driver details, RAM modules and motherboard.
+- Physical storage, local volumes and active display modes.
+- Battery capacity, health, cycle count and manufacture date when available.
+- Physical network adapters.
+
+Some providers don't expose every value. Missing data is shown as unavailable. Dedicated GPU memory is not guessed from WMI's unreliable 32-bit `AdapterRAM` field.
+
+</details>
+
+<details>
+<summary><b>Make it yours</b></summary>
+
+- Light, dark or system theme.
+- Choose which quick-control tiles appear.
+- Battery-details and warranty links can be hidden.
+- A tray icon keeps the app out of the way. Closing the flyout hides it; **Close app** exits it.
+- Optional elevated startup task for launching with Windows without a repeated UAC prompt.
+- Smooth custom flyout motion that respects Windows' animation setting. It is a hand-built effect, not the Start menu's private shell animation.
+
+</details>
+
+## Compatibility
+
+| Model | Status | Notes |
+| :--- | :--- | :--- |
+| **Legion 5 15ITH6H (82JH)** | **Verified on the developer's machine** | Reference machine used for live testing. This is not certification of every control or every Windows/driver version. Fn's initial ON display is an assumption, not a reliable firmware read. |
+| Other Legion models | Expected, unverified | Recognized Legion models are candidates. Each control is checked separately. Please report your model and any unavailable controls. |
+| LOQ models | Expected, unverified | LOQ identity is recognized; firmware/control paths are not verified across the series. |
+| IdeaPad / Yoga / Slim / ThinkBook | Not supported by this project | Outside the supported device family and protocol coverage. |
+| ThinkPad | Not supported by this project | Outside the supported device family and protocol coverage. |
+
+Please include your model, machine type, Windows version and the relevant error when reporting a problem. Review diagnostic logs before sharing them, and remove serial numbers or other private identifiers.
+
+## Installation
+
+Open [**Releases**](../../releases) and pick one package:
+
+| Package | Best for | Requirement |
+| :--- | :--- | :--- |
+| `Setup-with-dotnet.exe` | Most users | Includes the required .NET runtime |
+| `Setup.exe` | Users with the runtime already installed | .NET 8 Desktop Runtime, x64 |
+| `portable-x64.zip` | Running without installation | Extract the entire ZIP; .NET 8 Desktop Runtime, x64 |
+
+1. Use Windows 11 or a compatible x64 Windows environment with the required drivers.
+2. Install your chosen package, or extract the portable ZIP.
+3. Start **FluentLegionToolbar.exe**. The internal filename stays unchanged for upgrade/settings compatibility.
+4. Open the tray icon, then use Settings to choose your theme, language and controls.
+
+**Upgrades:** keep the same install folder. v0.3.1 adds shutdown verification before files are replaced. The release workflow tests a running v0.3.0-to-new-version upgrade before publication; check the build result before downloading a pending version.
+
+Old releases are preserved. Future fixes receive new versions rather than silently replacing previous downloads.
+
+## Languages
+
+The interface offers English, Arabic, French, German, Italian, Spanish, Portuguese, Russian, Simplified Chinese and Japanese. Arabic uses right-to-left layout. Some newer device-detail text falls back to English where a translation is not yet available.
+
+## Privacy and hardware notes
+
+- Device inventory is read locally. The serial starts masked.
+- Clicking **Check warranty with Lenovo** sends the device's serial number and machine type to Lenovo. Opening the device page alone does not perform that network request.
+- Fn Lock starts ON in the UI by design. Startup does not write Fn Lock to the firmware.
+- Unsupported or unreadable controls stay unavailable rather than pretending to work.
+- Avoid running competing hardware-control tools at the same time.
+
+## Credits
+
+**Developer:** Mohamed Elnaggar  
+**brought to you by app.instinct AI**
+
+LenovoLegionToolkit was used as a hardware-interface reference, not as copied implementation. Dashboard icons come from Microsoft's MIT-licensed [Fluent UI System Icons](https://github.com/microsoft/fluentui-system-icons); see [THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt). Lenovo, Legion, LOQ and Vantage are trademarks of their owners. This project is independent and is not endorsed by Lenovo.
