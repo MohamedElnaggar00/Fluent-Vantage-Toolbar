@@ -6,7 +6,7 @@ public sealed class AppSettings
 {
     public string Language { get; set; } = "en";
     public string Theme { get; set; } = "system";
-    public List<string> HiddenTiles { get; set; } = new();
+    public List<string> HiddenTiles { get; set; } = new() { "usb", "refresh" };
     public bool ShowWarranty { get; set; } = true;
     public bool ShowBatteryDetails { get; set; } = true;
 
