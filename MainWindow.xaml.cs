@@ -90,7 +90,8 @@ public sealed partial class MainWindow : Window
         }
         ApplyTheme();
 
-        tray = new TrayIcon(hwnd, Path.Combine(AppContext.BaseDirectory, "app.ico"), TrayItems(), () => ShowFlyout(null, true), OnTrayMenu, OpenTrayContext);
+        tray = new TrayIcon(hwnd, Path.Combine(AppContext.BaseDirectory, "app.ico"), TrayItems(), () => ShowFlyout(null, true), OnTrayMenu);
+        tray.IsDark=()=>Dark;
         tray.NativeTip = true; tray.SetTip("Fluent Vantage Toolbar");
         AppWindow.Closing += (_, e) => { if (!exiting && !preview) { e.Cancel = true; HideFlyout(); } };
         Closed += (_, _) => { contextMenu?.Close();timer.Stop(); tray.Dispose(); };
