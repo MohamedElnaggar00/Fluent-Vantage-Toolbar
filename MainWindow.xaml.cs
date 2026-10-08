@@ -185,7 +185,7 @@ public sealed partial class MainWindow : Window
         busy = true;
         foreach (var button in tileButtons.Values) button.IsEnabled = false;
         try { await action(); current = await device.ReadAsync(); Apply(); }
-        catch (Exception e) { DiagnosticLog.Write("Control failed: " + e); current = await device.ReadAsync(); Apply(); dialogOpen = true; try { await new ContentDialog { XamlRoot = Root.XamlRoot, Title = L.T("notconfirmed"), Content = e.Message + "\n\n" + DiagnosticLog.Path, CloseButtonText = "OK" }.ShowAsync(); } finally { dialogOpen = false; } }
+        catch (Exception e) { DiagnosticLog.Write("Control failed: " + e); current = await device.ReadAsync(); Apply(); dialogOpen = true; try { await new ContentDialog { XamlRoot = Root.XamlRoot, Title = L.T("notconfirmed"), Content = (L.Ar ? "لم يتأكد تغيير الإعداد. أعد المحاولة، وإذا استمرت المشكلة افتح سجل التشخيص من الإعدادات وأرسله للدعم." : "The setting change could not be confirmed. Try again. If it continues, open the diagnostic log in Settings and send it to support."), CloseButtonText = "OK" }.ShowAsync(); } finally { dialogOpen = false; } }
         finally { busy = false; }
     }
 
