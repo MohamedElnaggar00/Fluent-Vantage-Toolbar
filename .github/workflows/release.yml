@@ -52,6 +52,24 @@ jobs:
           Publish 'out-fd' 'false'
           Remove-Item -Recurse -Force obj, bin
           Publish 'out-sc' 'true'
+      - name: Capture compact UI fixtures
+        shell: pwsh
+        run: |
+          foreach($language in @('english','arabic')) {
+            foreach($theme in @('light','dark')) {
+              $arguments=@('--capture',(Join-Path $PWD "$language-$theme.png"),"--$theme")
+              if($language -eq 'arabic') { $arguments += '--arabic' }
+              $p=Start-Process .\out-fd\FluentLegionToolbar.exe -ArgumentList $arguments -PassThru
+              if(-not $p.WaitForExit(90000)) { Stop-Process $p.Id -Force; throw 'Capture timeout' }
+              if($p.ExitCode -ne 0 -or -not (Test-Path "$language-$theme.png")) { throw 'Capture failed' }
+            }
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-ui-captures
+          path: |
+            *-light.png
+            *-dark.png
       - name: Package (zip + installers)
         shell: pwsh
         run: |
