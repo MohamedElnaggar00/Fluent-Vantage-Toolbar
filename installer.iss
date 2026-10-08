@@ -47,7 +47,7 @@ Filename: "{app}\FluentLegionToolbar.exe"; Parameters: "--show"; Description: "O
 [UninstallRun]
 Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\uninstall-startup.ps1"""; Flags: runhidden waituntilterminated; RunOnceId: "RemoveStartupTask"
 
-#if Bundled == 0
+#if Str(Bundled) == "0"
 [Code]
 function HasDesktopRuntime8: Boolean;
 var
