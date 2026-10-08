@@ -1,5 +1,6 @@
 // Microsoft Fluent UI System Icons, MIT licensed. See THIRD-PARTY-NOTICES.txt.
 using Microsoft.UI.Xaml;
+using FluentLegionToolbar.Hardware;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Markup;
