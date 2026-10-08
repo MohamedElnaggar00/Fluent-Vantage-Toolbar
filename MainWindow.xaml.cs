@@ -167,20 +167,20 @@ public sealed partial class MainWindow : Window
         if(flyoutVisible)await AnimateFlyout(false);
         if(generation!=animationGeneration)return;
         flyoutVisible=false;SetCloaked(true);
-        flyoutMotion?.Stop();canvas.Opacity=1;canvas.RenderTransform=new TranslateTransform();
+        flyoutMotion?.Stop();Root.Opacity=1;Root.RenderTransform=new TranslateTransform();
     }
     Task AnimateFlyout(bool show)
     {
         flyoutMotion?.Stop();
-        if(!MotionEnabled){canvas.Opacity=1;canvas.RenderTransform=new TranslateTransform();return Task.CompletedTask;}
-        var transform=new TranslateTransform();canvas.RenderTransform=transform;
+        if(!MotionEnabled){Root.Opacity=1;Root.RenderTransform=new TranslateTransform();return Task.CompletedTask;}
+        var transform=new TranslateTransform();Root.RenderTransform=transform;
         var motion=new Microsoft.UI.Xaml.Media.Animation.Storyboard();flyoutMotion=motion;
         double time=show?220:170;
         var easing=new Microsoft.UI.Xaml.Media.Animation.CubicEase{EasingMode=show?Microsoft.UI.Xaml.Media.Animation.EasingMode.EaseOut:Microsoft.UI.Xaml.Media.Animation.EasingMode.EaseIn};
         var slide=new Microsoft.UI.Xaml.Media.Animation.DoubleAnimation{From=show?42:0,To=show?0:42,Duration=new Duration(TimeSpan.FromMilliseconds(time)),EasingFunction=easing,EnableDependentAnimation=true};
         var fade=new Microsoft.UI.Xaml.Media.Animation.DoubleAnimation{From=show?0:1,To=show?1:0,Duration=new Duration(TimeSpan.FromMilliseconds(time)),EasingFunction=easing};
         Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTarget(slide,transform);Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTargetProperty(slide,"Y");
-        Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTarget(fade,canvas);Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTargetProperty(fade,"Opacity");motion.Children.Add(slide);motion.Children.Add(fade);
+        Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTarget(fade,Root);Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTargetProperty(fade,"Opacity");motion.Children.Add(slide);motion.Children.Add(fade);
         var done=new TaskCompletionSource<bool>();motion.Completed+=(_,_)=>done.TrySetResult(true);motion.Begin();
         return done.Task;
     }
@@ -206,7 +206,7 @@ public sealed partial class MainWindow : Window
             int top=Math.Clamp(y-AppWindow.Size.Height-16,area.Y,Math.Max(area.Y,area.Y+area.Height-AppWindow.Size.Height-12));
             AppWindow.Move(new PointInt32(left,top));HideFromTaskbar();
             if(!AppWindow.IsVisible)AppWindow.Show(false);
-            flyoutMotion?.Stop();canvas.Opacity=MotionEnabled?0:1;canvas.RenderTransform=new TranslateTransform{Y=MotionEnabled?42:0};
+            flyoutMotion?.Stop();Root.Opacity=MotionEnabled?0:1;Root.RenderTransform=new TranslateTransform{Y=MotionEnabled?42:0};
             await PresentPreparedAsync();
             if(generation!=animationGeneration)return;
             SetCloaked(false);flyoutVisible=true;Activate();SetForegroundWindow(hwnd);
