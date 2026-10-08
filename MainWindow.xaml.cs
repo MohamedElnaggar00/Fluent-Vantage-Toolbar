@@ -376,6 +376,18 @@ public sealed partial class MainWindow : Window
         pageNavigating=true;
         try {
             await geometryReady;view=target;Render();await geometryReady;
+            if(MotionEnabled && AppWindow.IsVisible) {
+                var shift=new TranslateTransform { Y=24 };body.RenderTransform=shift;
+                var motion=new Microsoft.UI.Xaml.Media.Animation.Storyboard();
+                var done=new TaskCompletionSource<bool>();motion.Completed+=(_,_)=>done.TrySetResult(true);
+                void Add(DependencyObject element,string property,double from,double to) {
+                    var animation=new Microsoft.UI.Xaml.Media.Animation.DoubleAnimation { From=from,To=to,Duration=new Duration(TimeSpan.FromMilliseconds(200)),EnableDependentAnimation=true,
+                        EasingFunction=new Microsoft.UI.Xaml.Media.Animation.CubicEase { EasingMode=Microsoft.UI.Xaml.Media.Animation.EasingMode.EaseOut } };
+                    Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTarget(animation,element);Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTargetProperty(animation,property);motion.Children.Add(animation);
+                }
+                Add(shift,"Y",24,0);Add(body,"Opacity",0,1);motion.Begin();await done.Task;
+                motion.Stop();body.Opacity=1;body.RenderTransform=new TranslateTransform();
+            }
             if(target=="battery" && !preview)_ = LoadBatteryAsync();
             if(target=="warranty" && !preview)_ = LoadWarrantyAsync(false);
         } finally {pageNavigating=false;}
