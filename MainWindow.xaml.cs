@@ -400,9 +400,7 @@ public sealed partial class MainWindow : Window
         canvas.Margin=new Thickness(0);SetWindowRgn(hwnd,IntPtr.Zero,true);
         L.Set(settings.Language);
         ApplyTheme();
-        // Keep an expanding HWND off screen until its new XAML surface is painted.
-        restoreAfterGeometry= AppWindow.IsVisible && (!preview || args.Contains("--interactive"));
-        if(restoreAfterGeometry)AppWindow.Hide();
+        restoreAfterGeometry=false;
         if (tray != null) tray.SetItems(TrayItems());
         titleBar.Children.Clear(); titleBar.ColumnDefinitions.Clear();
         titleBar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
