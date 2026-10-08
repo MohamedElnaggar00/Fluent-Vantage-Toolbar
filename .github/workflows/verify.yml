@@ -1,0 +1,34 @@
+name: Verify private WinUI build
+on: [push, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  import:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - uses: microsoft/setup-msbuild@v2
+      - shell: pwsh
+        run: |
+          msbuild FluentLegionToolbar.csproj /restore /t:Publish /p:Configuration=Release /p:Platform=x64 /p:RuntimeIdentifier=win-x64 /p:SelfContained=false /p:PublishDir=out/
+          if($LASTEXITCODE -ne 0) { throw 'Build failed' }
+          foreach($language in @('english','arabic')) {
+            foreach($theme in @('light','dark')) {
+              $arguments=@('--capture',(Join-Path $PWD "$language-$theme.png"),"--$theme")
+              if($language -eq 'arabic') { $arguments += '--arabic' }
+              $p=Start-Process .\out\FluentLegionToolbar.exe -ArgumentList $arguments -PassThru
+              if(-not $p.WaitForExit(90000)) { Stop-Process $p.Id -Force; throw 'Capture timeout' }
+              if($p.ExitCode -ne 0 -or -not (Test-Path "$language-$theme.png")) { throw 'Capture failed' }
+            }
+          }
+          Compress-Archive out/* Fluent-Legion-toolbar-runtime-dependent.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: private-test-build-and-captures
+          path: |
+            Fluent-Legion-toolbar-runtime-dependent.zip
+            *-light.png
+            *-dark.png
