@@ -170,8 +170,12 @@ jobs:
           Built by CI only. Not yet install-tested on every Legion model.
           "@
           if($replace) {
-            gh release delete $tag --cleanup-tag --yes
-            if($LASTEXITCODE -ne 0) { throw 'Owner-approved 0.3.5 replacement could not remove old release/tag' }
+            gh release upload $tag (Get-ChildItem release).FullName --clobber
+            if($LASTEXITCODE -ne 0) { throw '0.3.5 asset replacement failed' }
+            git tag -f $tag ${{ github.sha }}
+            git push origin "refs/tags/$tag" --force
+            if($LASTEXITCODE -ne 0) { throw '0.3.5 tag update failed' }
+          } else {
+            gh release create $tag (Get-ChildItem release).FullName --target ${{ github.sha }} --title "Fluent Vantage Toolbar $v" --notes $notes
+            if($LASTEXITCODE -ne 0) { throw 'Release failed' }
           }
-          gh release create $tag (Get-ChildItem release).FullName --target ${{ github.sha }} --title "Fluent Vantage Toolbar $v" --notes $notes
-          if($LASTEXITCODE -ne 0) { throw 'Release failed' }
