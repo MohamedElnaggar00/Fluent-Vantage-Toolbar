@@ -30,6 +30,11 @@ public sealed partial class MainWindow : Window
         double scale=GetDpiForWindow(hwnd)/96d;
         AppWindow.Resize(new SizeInt32((int)(520*scale),(int)(645*scale)));
         preview=args.Contains("--capture");
+        if(preview) {
+            Root.Width=472;Root.Height=610;
+            AppWindow.Resize(new SizeInt32((int)(580*scale),(int)(730*scale)));
+            Root.Background=new SolidColorBrush(args.Contains("--dark")?Windows.UI.Color.FromArgb(255,32,32,32):Windows.UI.Color.FromArgb(255,243,243,243));
+        }
         arabic=args.Contains("--arabic");
         if(args.Contains("--dark")) Root.RequestedTheme=ElementTheme.Dark;
         if(args.Contains("--light")) Root.RequestedTheme=ElementTheme.Light;
@@ -131,6 +136,7 @@ public sealed partial class MainWindow : Window
     {
         // Deterministic render fixture, clearly labelled as preview. Hardware services are never called.
         Apply(new Hardware.DeviceState(60,true,false,ChargeMode.Conservation,false,false,"Visual fixture",[],true,2,144,[60,144]));
+        FnLock.IsEnabled=Usb.IsEnabled=RefreshRate.IsEnabled=Microphone.IsEnabled=Conservation.IsEnabled=Rapid.IsEnabled=Touchpad.IsEnabled=true;
         await Task.Delay(2500);
         int index=Array.IndexOf(args,"--capture");string path=args[index+1];
         var bitmap=new Microsoft.UI.Xaml.Media.Imaging.RenderTargetBitmap();await bitmap.RenderAsync(Root);
