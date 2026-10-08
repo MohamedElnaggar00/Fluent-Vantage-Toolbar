@@ -21,7 +21,7 @@ static class Extra
     {
         ["fr"] = new()
         {
-            ["title"] = "Mon Legion 5 15ITH6H",
+            ["title"] = "Mon {device}",
             ["battery.header"] = "MA BATTERIE",
             ["quick.header"] = "PARAMÈTRES RAPIDES",
             ["battery.link"] = "Détails de la batterie",
@@ -74,7 +74,7 @@ static class Extra
         },
         ["de"] = new()
         {
-            ["title"] = "Mein Legion 5 15ITH6H",
+            ["title"] = "Mein {device}",
             ["battery.header"] = "MEIN AKKU",
             ["quick.header"] = "SCHNELLEINSTELLUNGEN",
             ["battery.link"] = "Akkudetails",
@@ -127,7 +127,7 @@ static class Extra
         },
         ["it"] = new()
         {
-            ["title"] = "Il mio Legion 5 15ITH6H",
+            ["title"] = "Il mio {device}",
             ["battery.header"] = "LA MIA BATTERIA",
             ["quick.header"] = "IMPOSTAZIONI RAPIDE",
             ["battery.link"] = "Dettagli batteria",
@@ -180,7 +180,7 @@ static class Extra
         },
         ["es"] = new()
         {
-            ["title"] = "Mi Legion 5 15ITH6H",
+            ["title"] = "Mi {device}",
             ["battery.header"] = "MI BATERÍA",
             ["quick.header"] = "AJUSTES RÁPIDOS",
             ["battery.link"] = "Detalles de la batería",
@@ -233,7 +233,7 @@ static class Extra
         },
         ["pt"] = new()
         {
-            ["title"] = "Meu Legion 5 15ITH6H",
+            ["title"] = "Meu {device}",
             ["battery.header"] = "MINHA BATERIA",
             ["quick.header"] = "CONFIGURAÇÕES RÁPIDAS",
             ["battery.link"] = "Detalhes da bateria",
@@ -286,7 +286,7 @@ static class Extra
         },
         ["ru"] = new()
         {
-            ["title"] = "Мой Legion 5 15ITH6H",
+            ["title"] = "Мой {device}",
             ["battery.header"] = "МОЯ БАТАРЕЯ",
             ["quick.header"] = "БЫСТРЫЕ НАСТРОЙКИ",
             ["battery.link"] = "Сведения о батарее",
@@ -339,7 +339,7 @@ static class Extra
         },
         ["zh"] = new()
         {
-            ["title"] = "我的 Legion 5 15ITH6H",
+            ["title"] = "我的 {device}",
             ["battery.header"] = "我的电池",
             ["quick.header"] = "快速设置",
             ["battery.link"] = "电池详情",
@@ -392,7 +392,7 @@ static class Extra
         },
         ["ja"] = new()
         {
-            ["title"] = "マイ Legion 5 15ITH6H",
+            ["title"] = "マイ {device}",
             ["battery.header"] = "バッテリー",
             ["quick.header"] = "クイック設定",
             ["battery.link"] = "バッテリーの詳細",
