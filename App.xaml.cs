@@ -1,3 +1,4 @@
+using FluentLegionToolbar.Hardware;
 using Microsoft.UI.Xaml;
 namespace FluentLegionToolbar;
 public partial class App : Application
