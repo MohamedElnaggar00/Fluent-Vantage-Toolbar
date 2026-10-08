@@ -353,6 +353,7 @@ public sealed partial class MainWindow : Window
 
     bool pageNavigating;
     Image? outgoingPage;
+    RectInt32? visiblePageBounds;
     Brush? navigationBackground;
     bool MotionEnabled => preview ? args.Contains("--interactive") : new Windows.UI.ViewManagement.UISettings().AnimationsEnabled;
 
@@ -383,8 +384,7 @@ public sealed partial class MainWindow : Window
         } catch(Exception error) { DiagnosticLog.Write("Page navigation failed: "+error); if(preview)throw; }
         finally {
             if(outgoingPage!=null){Root.Children.Remove(outgoingPage);outgoingPage=null;}
-            canvas.Opacity=1;canvas.RenderTransform=new TranslateTransform();canvas.Clip=null;canvas.Margin=new Thickness(0);
-            SetWindowRgn(hwnd,IntPtr.Zero,true);
+            canvas.Opacity=1;canvas.RenderTransform=new TranslateTransform();canvas.Clip=null;
             if(animate){await NextFrameAsync();Root.Background=navigationBackground;}
             pageNavigating=false;
         }
@@ -392,6 +392,7 @@ public sealed partial class MainWindow : Window
 
     void Render(bool animatePage=false)
     {
+        if(!animatePage){visiblePageBounds=null;canvas.Margin=new Thickness(0);SetWindowRgn(hwnd,IntPtr.Zero,true);}
         L.Set(settings.Language);
         ApplyTheme();
         // Keep an expanding HWND off screen until its new XAML surface is painted.
@@ -473,7 +474,7 @@ public sealed partial class MainWindow : Window
             if(view=="main" && body.Content is StackPanel main) {
                 var last=(FrameworkElement)main.Children.Last();
                 double ink=await PaintedHeightAsync(last);
-                wanted=last.TransformToVisual(Root).TransformPoint(new Windows.Foundation.Point(0,ink)).Y+24;
+                wanted=last.TransformToVisual(Root).TransformPoint(new Windows.Foundation.Point(0,ink)).Y-canvas.Margin.Top+24;
             }
             if(generation!=geometryGeneration)return;
             var work=DisplayArea.GetFromWindowId(AppWindow.Id,DisplayAreaFallback.Nearest).WorkArea;
@@ -482,7 +483,9 @@ public sealed partial class MainWindow : Window
             if(animatePage) {
                 // Anchor the bottom edge. One atomic rect update per frame avoids
                 // a resize/move mismatch; the snapshot covers layout preparation.
-                var start=AppWindow.Position;var size=AppWindow.Size;
+                var pos=AppWindow.Position;var actual=AppWindow.Size;
+                var visible=visiblePageBounds ?? new RectInt32(pos.X,pos.Y,actual.Width,actual.Height);
+                var start=new PointInt32(visible.X,visible.Y);var size=new SizeInt32(visible.Width,visible.Height);
                 int bottom=start.Y+size.Height;
                 int left=Math.Clamp(start.X+(size.Width-desired.Width)/2,work.X,Math.Max(work.X,work.X+work.Width-desired.Width));
                 int top=Math.Clamp(bottom-desired.Height,work.Y,Math.Max(work.Y,work.Y+work.Height-desired.Height));
@@ -506,7 +509,7 @@ public sealed partial class MainWindow : Window
     async Task AnimatePageGeometryAsync(int generation,RectInt32 target)
     {
         var position=AppWindow.Position;var size=AppWindow.Size;
-        var start=new RectInt32(position.X,position.Y,size.Width,size.Height);
+        var start=visiblePageBounds ?? new RectInt32(position.X,position.Y,size.Width,size.Height);
         const int duration=300;
         var transform=new TranslateTransform { Y=96 };canvas.RenderTransform=transform;
         var motion=new Microsoft.UI.Xaml.Media.Animation.Storyboard();
@@ -520,8 +523,8 @@ public sealed partial class MainWindow : Window
         if(outgoingPage!=null)Add(outgoingPage,"Opacity",1,0);
         // Allocate the largest surface once while covered, then animate its
         // visible region. No newly allocated DWM strip is exposed mid-transition.
-        int envelopeTop=Math.Min(start.Y,target.Y);
-        int envelopeBottom=Math.Max(start.Y+start.Height,target.Y+target.Height);
+        int envelopeTop=Math.Min(position.Y,Math.Min(start.Y,target.Y));
+        int envelopeBottom=Math.Max(position.Y+size.Height,Math.Max(start.Y+start.Height,target.Y+target.Height));
         var envelope=new RectInt32(target.X,envelopeTop,target.Width,envelopeBottom-envelopeTop);
         double scale=Math.Max(1,GetDpiForWindow(hwnd)/96d);
         void Reveal(int top,int height) {
@@ -553,9 +556,7 @@ public sealed partial class MainWindow : Window
             await Task.Delay(10);await NextFrameAsync();
         }
         if(generation==geometryGeneration && AppWindow.IsVisible) {
-            canvas.Margin=new Thickness(0);
-            SetWindowRgn(hwnd,IntPtr.Zero,false);
-            SetWindowPos(hwnd,IntPtr.Zero,target.X,target.Y,target.Width,target.Height,0x0014|0x0100);
+            Reveal(target.Y-envelopeTop,target.Height);visiblePageBounds=target;
             Root.UpdateLayout();await NextFrameAsync();
         }
         motion.Stop();canvas.Opacity=1;transform.Y=0;
@@ -565,7 +566,7 @@ public sealed partial class MainWindow : Window
             var dir=Path.GetDirectoryName(args[Array.IndexOf(args,"--capture")+1])!;
             File.AppendAllLines(Path.Combine(dir,"navigation-geometry.csv"),new[]{$"PAGE,{view},{start.Height},{target.Height},{steps},{clock.ElapsedMilliseconds}"}.Concat(trace));
             if(start.Height!=target.Height && steps<3)throw new InvalidOperationException("Page size changed without intermediate animation frames");
-            if(AppWindow.IsVisible && (AppWindow.Size.Height!=target.Height || AppWindow.Position.Y!=target.Y))throw new InvalidOperationException("Page animation missed its final bounds");
+            if(AppWindow.IsVisible && (visiblePageBounds?.Height!=target.Height || visiblePageBounds?.Y!=target.Y))throw new InvalidOperationException("Page animation missed its final bounds");
         }
     }
 
