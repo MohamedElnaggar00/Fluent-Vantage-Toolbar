@@ -65,7 +65,12 @@ jobs:
               $arguments=@('--capture',(Join-Path $PWD "$language-$theme.png"),"--$theme")
               if($language -eq 'arabic') { $arguments += '--arabic' }
               $p=Start-Process .\out-fd\FluentLegionToolbar.exe -ArgumentList $arguments -PassThru
-              Start-Sleep -Milliseconds 1800
+              for($attempt=0;$attempt -lt 40;$attempt++) {
+                $p.Refresh()
+                if($p.HasExited) { Get-Content .\out-fd\launch-error.txt -ErrorAction SilentlyContinue; throw "Capture app exited early with $($p.ExitCode)" }
+                if($p.MainWindowHandle -ne 0) { break }
+                Start-Sleep -Milliseconds 250
+              }
               Add-Type -AssemblyName System.Drawing
               if(-not ('WindowCaptureBounds' -as [type])) {
                 Add-Type @'
@@ -90,11 +95,13 @@ jobs:
             }
           }
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: release-ui-captures
           path: |
             *-light.png
             *-dark.png
+            out-fd/launch-error.txt
       - name: Package (zip + installers)
         shell: pwsh
         run: |
