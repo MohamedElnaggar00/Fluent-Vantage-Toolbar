@@ -65,7 +65,7 @@ public sealed partial class MainWindow : Window
         if (AppWindow.Presenter is OverlappedPresenter presenter) { presenter.SetBorderAndTitleBar(true, false); presenter.IsResizable = false; presenter.IsMaximizable = false; presenter.IsMinimizable = false; presenter.IsAlwaysOnTop = true; }
         HideFromTaskbar();
         double scale = GetDpiForWindow(hwnd) / 96d;
-        AppWindow.Resize(new SizeInt32((int)(416 * scale), (int)(456 * scale)));
+        AppWindow.Resize(new SizeInt32((int)(520 * scale), (int)(570 * scale)));
 
         Root.Padding = new Thickness(24, 8, 24, 20);
         Root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -74,13 +74,13 @@ public sealed partial class MainWindow : Window
         canvas.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         canvas.RowDefinitions.Add(new RowDefinition());
         canvas.Children.Add(titleBar); Grid.SetRow(body, 1); canvas.Children.Add(body);
-        Root.RowDefinitions.Clear(); Root.Padding = new Thickness(19.2, 6.4, 19.2, 16);
+        Root.RowDefinitions.Clear(); Root.Padding = new Thickness(24, 8, 24, 20);
         Root.Children.Add(new Viewbox { Stretch = Stretch.Uniform, HorizontalAlignment = HorizontalAlignment.Stretch, VerticalAlignment = VerticalAlignment.Top, Child = canvas });
         // Flyout uses a compact custom caption row; the gear and X share one baseline.
         if (preview)
         {
-            Root.Width = 416; Root.Height = 456;
-            AppWindow.Resize(new SizeInt32((int)(416 * scale), (int)(456 * scale)));
+            Root.Width = 520; Root.Height = 570;
+            AppWindow.Resize(new SizeInt32((int)(520 * scale), (int)(570 * scale)));
             Root.Background = new SolidColorBrush(args.Contains("--dark") ? Windows.UI.Color.FromArgb(255, 32, 32, 32) : Windows.UI.Color.FromArgb(255, 243, 243, 243));
         }
         ApplyTheme();
