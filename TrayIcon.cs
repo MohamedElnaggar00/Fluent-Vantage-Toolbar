@@ -69,7 +69,8 @@ sealed class TrayIcon : IDisposable
     readonly Action<int> _onMenu;
     readonly Func<int, int, bool>? _onContext;
     public Action? OnHover;
-    readonly (int id, string text)[] _items;
+    (int id, string text)[] _items;
+    public void SetItems((int id, string text)[] items) => _items = items;
     readonly SubclassProc _proc;
     readonly uint _taskbarCreated;
     IntPtr _icon;
@@ -158,3 +159,4 @@ sealed class TrayIcon : IDisposable
         if (_icon != IntPtr.Zero) { DestroyIcon(_icon); _icon = IntPtr.Zero; }
     }
 }
+

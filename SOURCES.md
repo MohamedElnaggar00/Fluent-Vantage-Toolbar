@@ -8,4 +8,8 @@
 - https://learn.microsoft.com/en-us/windows/apps/design/style/segoe-fluent-icons-font : Windows 11 glyph font.
 - https://github.com/MohamedElnaggar00/fluent-prayer-times : MIT, same owner's tray shell infrastructure reused with license retained. No prayer/location data included.
 
+- LenovoLegionToolkit (GPL-3.0), protocol evidence only, no code copied, for: Fn Lock (EnergyDrv IOCTL 0x831020E8, query 2, bit 10, set 0xE/0xF), Lenovo battery record (IOCTL 0x83102138, manufacture date field), warranty lookup (pcsupport.lenovo.com getIbaseInfo endpoint, serial number and machine type from Win32_ComputerSystemProduct).
+- Battery capacity and cycle count come from Windows WMI (root\WMI BatteryStaticData, BatteryFullChargedCapacity, BatteryCycleCount).
+
 No claim of target-device runtime verification is made.
+

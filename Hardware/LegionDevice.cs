@@ -13,7 +13,18 @@ public sealed class LegionDevice
     [DllImport("kernel32.dll")] static extern bool GetSystemPowerStatus(out PowerStatus status);
     [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)] static extern SafeFileHandle CreateFile(string path, uint access, uint share, IntPtr security, uint creation, uint flags, IntPtr template);
     [DllImport("kernel32.dll", SetLastError=true)] static extern bool DeviceIoControl(SafeFileHandle handle, uint code, ref uint input, uint inputLength, out uint output, uint outputLength, out uint returned, IntPtr overlapped);
+    [DllImport("kernel32.dll", SetLastError=true)] static extern bool DeviceIoControl(SafeFileHandle handle, uint code, ref uint input, uint inputLength, byte[] output, uint outputLength, out uint returned, IntPtr overlapped);
     readonly SemaphoreSlim gate = new(1);
+    /// <summary>Reads one Lenovo battery record (EnergyDrv IOCTL 0x83102138). Offsets: temperature 14, manufacture date 16, first use 18.</summary>
+    public static (ushort Temperature, ushort Manufacture, ushort FirstUse)? ReadLenovoBatteryRecord(uint index)
+    {
+        using var h = CreateFile(@"\\.\EnergyDrv", 3, 3, IntPtr.Zero, 3, 0x80, IntPtr.Zero);
+        if (h.IsInvalid) throw new Win32Exception(Marshal.GetLastWin32Error());
+        var buffer = new byte[84];
+        if (!DeviceIoControl(h, 0x83102138, ref index, 4, buffer, (uint)buffer.Length, out _, IntPtr.Zero)) throw new Win32Exception(Marshal.GetLastWin32Error());
+        ushort Read(int offset) => BitConverter.ToUInt16(buffer, offset);
+        return (Read(14), Read(16), Read(18));
+    }
     bool targetModel;
     uint Exchange(uint command, uint ioctl = 0x831020F8)
     {
@@ -70,14 +81,21 @@ public sealed class LegionDevice
         try { if (Touchpad("IsSupportDisableTP") > 0) { int value=Touchpad("GetTPStatus"); if (value is not (0 or 1)) throw new InvalidOperationException("Unknown touchpad state"); locked=value==1; } } catch(Exception e) { errors.Add("Touchpad: "+e.Message); }
         try { muted=ReadMicrophone(); } catch(Exception e) { errors.Add("Microphone: "+e.Message); }
         bool? fn=null;int? usb=null,hz=null;int[] rates=[];
-        try {uint settings=Exchange(2,0x831020E8);fn=(settings&512)!=0?(settings&1024)!=0:null;usb=(settings&64)!=0&&(settings&16384)!=0?((settings&128)==0?0:(settings&32768)!=0?2:1):null;}catch(Exception e){errors.Add("Fn / USB: "+e.Message);}
+        try { uint settings=Exchange(2,0x831020E8); fn=(settings&1024)!=0; } catch(Exception e) { errors.Add("Fn Lock: "+e.Message); }
+        try { uint settings=Exchange(2,0x831020E8); usb=(settings&64)!=0&&(settings&16384)!=0?((settings&128)==0?0:(settings&32768)!=0?2:1):null; } catch(Exception e) { errors.Add("USB: "+e.Message); }
         try {(hz,rates)=DisplayControl.Read();}catch(Exception e){errors.Add("Display: "+e.Message);}
         return new DeviceState(percent, plugged, charging, mode, muted, locked, model, errors.ToArray(),fn,usb,hz,rates);
     });
-    public Task SetFnAsync(bool locked) => Task.Run(() => {
-        if((Exchange(2,0x831020E8)&512)==0)throw new NotSupportedException("Fn Lock not supported.");
+    // Same control path as the reference toolkit: EnergyDrv settings IOCTL, query 2, bit 10 = Fn Lock, set 0xE = on, 0xF = off.
+    // No support bit is required first; the query itself succeeding is the capability check. The state is read back with retries.
+    public Task SetFnAsync(bool locked) => Task.Run(async () => {
+        Exchange(2,0x831020E8);
         Exchange(locked?14u:15u,0x831020E8);
-        if(((Exchange(2,0x831020E8)&1024)!=0)!=locked) throw new InvalidOperationException("Fn Lock state was not confirmed.");
+        for(int i=0;i<10;i++) {
+            await Task.Delay(100);
+            if(((Exchange(2,0x831020E8)&1024)!=0)==locked) return;
+        }
+        throw new InvalidOperationException("Fn Lock state was not confirmed.");
     });
     public Task SetUsbAsync(bool enabled) => Task.Run(() => {
         if((Exchange(2,0x831020E8)&0x4040)!=0x4040)throw new NotSupportedException("Always-on USB battery mode not supported.");
@@ -111,3 +129,4 @@ public sealed class LegionDevice
         foreach(var device in endpoints) { using(device) { device.AudioEndpointVolume.Mute=muted; if(device.AudioEndpointVolume.Mute!=muted) throw new InvalidOperationException("Microphone mute was not confirmed."); } }
     });
 }
+

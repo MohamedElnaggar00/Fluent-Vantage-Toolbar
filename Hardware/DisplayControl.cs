@@ -27,3 +27,4 @@ static class DisplayControl
         if(Internal().CurrentSetting.Frequency!=hz)throw new InvalidOperationException("Refresh rate change was not confirmed.");
     }
 }
+
