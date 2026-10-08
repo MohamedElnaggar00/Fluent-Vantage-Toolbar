@@ -24,7 +24,7 @@ A small Windows 11-style toolbar for Lenovo **Legion** and **LOQ** laptops.
 
 Fluent Vantage Toolbar is an independent replacement for the familiar Lenovo Vantage Toolbar.
 
-I built this toolbar after Lenovo removed the original feature in favor of its widget. I kept the concept I liked: battery information and quick controls right by the taskbar. Then I brought it into the Windows 11 design language and added a little customization, with configurable quick-control tiles.
+I built this toolbar after Lenovo removed the original feature in favor of its widget. I kept the concept I liked: battery information and quick controls right by the taskbar. Then I brought it into the Windows 11 design language and made the quick controls customizable.
 
 ### The original inspiration: Lenovo Vantage Toolbar
 
@@ -52,7 +52,7 @@ Independent project, not an official Lenovo product or a replacement for the ful
 | Refresh rate | Enable the panel's high refresh rate, or switch it off to use the lower supported rate |
 | Always-on USB | Toggle the supported always-on USB mode |
 
-Refresh rate and Always-on USB are hidden by default on fresh settings. Existing saved choices are preserved.
+Refresh rate and Always-on USB are hidden by default. Enable them in Settings when needed; existing saved choices are preserved.
 
 <details>
 <summary><b>Device information</b></summary>
@@ -93,11 +93,11 @@ Unavailable hardware data is marked as such. Dedicated GPU memory is not inferre
 | IdeaPad / Yoga / Slim / ThinkBook | Not supported by this project | Outside the supported device family and protocol coverage. Models with `ACPI\VPC2004` can try [lenovo-battery-tray](https://github.com/sahidhh/lenovo-battery-tray); Yoga support there is expected, unverified. |
 | ThinkPad | Not supported by this project | [lenovo-battery-tray](https://github.com/sahidhh/lenovo-battery-tray) also explicitly does not support ThinkPad.  |
 
-Issue reports should include the model, machine type, Windows version and relevant error. Diagnostic logs should be reviewed for private identifiers before sharing.
+When reporting an issue, include your model, machine type, Windows version and the relevant error. Remove private identifiers from diagnostic logs before sharing them.
 
 ## Installation
 
-Packages are available in [**Releases**](../../releases):
+Download a package from [**Releases**](../../releases):
 
 | Package | Best for | Requirement |
 | :--- | :--- | :--- |
@@ -107,7 +107,7 @@ Packages are available in [**Releases**](../../releases):
 
 Windows x64 and compatible Lenovo drivers are required. Portable packages must be fully extracted before running **FluentLegionToolbar.exe**; the executable name is retained for upgrade compatibility.
 
-The installer supports an optional elevated startup task. Settings controls language, theme and tile visibility.
+After installation, open the tray icon to access the toolbar. Choose your language, theme and visible tiles in Settings. The installer also offers an optional elevated startup task.
 
 ## Languages
 
