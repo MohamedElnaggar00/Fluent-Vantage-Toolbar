@@ -300,7 +300,7 @@ public sealed partial class MainWindow : Window
             panel.Measure(new Windows.Foundation.Size(472, double.PositiveInfinity));
             contentHeight = Math.Ceiling(panel.DesiredSize.Height);
         }
-        double requested = contentHeight + titleBar.Height + 28;
+        double requested = contentHeight + titleBar.Height + 28 + (view == "main" && settings.ShowWarranty ? 44 : 0);
         var area = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Nearest).WorkArea;
         double scale = Math.Max(1, GetDpiForWindow(hwnd) / 96d);
         double height = Math.Min(requested, area.Height / scale - 16);
