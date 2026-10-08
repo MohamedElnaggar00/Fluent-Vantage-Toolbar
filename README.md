@@ -1,4 +1,4 @@
-# Fluent Legion Toolbar
+# Fluent Vantage Toolbar
 
 [العربية](README.ar.md)
 
@@ -36,13 +36,13 @@ Fn Lock, mute all active microphones, battery conservation, rapid charge, touchp
 
 ## Distribution flavors
 The `Package private distribution` workflow (run it from Actions) builds three downloads into the `distribution` artifact:
-1. `FluentLegionToolbar-portable-x64.zip`: portable, no install. Needs the .NET 8 Desktop Runtime. Unzip to a permanent folder.
-2. `FluentLegionToolbar-Setup.exe`: one-click installer (Inno Setup). Needs the .NET 8 Desktop Runtime; the installer warns if it is missing.
-3. `FluentLegionToolbar-Setup-with-dotnet.exe`: installer with the .NET runtime bundled (self-contained build), so no separate .NET install is needed.
+1. `FluentVantageToolbar-portable-x64.zip`: portable, no install. Needs the .NET 8 Desktop Runtime. Unzip to a permanent folder.
+2. `FluentVantageToolbar-Setup.exe`: one-click installer (Inno Setup). Needs the .NET 8 Desktop Runtime; the installer warns if it is missing.
+3. `FluentVantageToolbar-Setup-with-dotnet.exe`: installer with the .NET runtime bundled (self-contained build), so no separate .NET install is needed.
 Both installers install to Program Files, add a Start menu entry, and offer the no-UAC startup task. The task runs as the user who runs the installer. CI only builds these files; they are not install-tested on a real desktop yet.
 
 ## Install and build
-Requires Windows 11 x64 and the .NET 8 Desktop Runtime. Open the latest successful `Verify private WinUI build` run in Actions and download `private-test-build-and-captures`. Unzip it, then unzip `Fluent-Legion-toolbar-runtime-dependent.zip` and run `FluentLegionToolbar.exe` from the complete folder.
+Requires Windows 11 x64 and the .NET 8 Desktop Runtime. Open the latest successful `Verify private WinUI build` run in Actions and download `private-test-build-and-captures`. Unzip it, then unzip `Fluent-Vantage-Toolbar-runtime-dependent.zip` and run `FluentLegionToolbar.exe` from the complete folder.
 
 To build from source use Visual Studio MSBuild as in `.github/workflows/verify.yml`, including its compiled XAML and resource copy step.
 
