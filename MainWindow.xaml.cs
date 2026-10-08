@@ -364,7 +364,9 @@ public sealed partial class MainWindow : Window
         if(generation!=fitGeneration || view!="main" || body.Content is not StackPanel main)return;
         Root.UpdateLayout();
         var last=(FrameworkElement)main.Children.Last();
-        var bottom=last.TransformToVisual(Root).TransformPoint(new Windows.Foundation.Point(0,last.ActualHeight)).Y;
+        double inkHeight=await PaintedHeightAsync(last);
+        if(generation!=fitGeneration || view!="main")return;
+        var bottom=last.TransformToVisual(Root).TransformPoint(new Windows.Foundation.Point(0,inkHeight)).Y;
         double wanted=bottom+24;
         double delta=wanted-Root.ActualHeight;
         if(Math.Abs(delta)>0.5) {
@@ -374,6 +376,19 @@ public sealed partial class MainWindow : Window
             var outer=AppWindow.Size;
             AppWindow.Resize(new SizeInt32(outer.Width,Math.Max(100,outer.Height+(int)Math.Round(delta*scale))));
         }
+    }
+
+    async Task<double> PaintedHeightAsync(FrameworkElement element)
+    {
+        var bitmap=new Microsoft.UI.Xaml.Media.Imaging.RenderTargetBitmap();
+        await bitmap.RenderAsync(element);
+        var buffer=await bitmap.GetPixelsAsync();
+        using var reader=Windows.Storage.Streams.DataReader.FromBuffer(buffer);
+        var pixels=new byte[buffer.Length];reader.ReadBytes(pixels);
+        for(int y=bitmap.PixelHeight-1;y>=0;y--)for(int x=0;x<bitmap.PixelWidth;x++)
+            if(pixels[(y*bitmap.PixelWidth+x)*4+3]>16)
+                return (y+1)*element.ActualHeight/bitmap.PixelHeight;
+        return element.ActualHeight;
     }
 
     UIElement HeaderRow(string header, string? linkText, Action? click)
@@ -834,12 +849,15 @@ public sealed partial class MainWindow : Window
             if(body.Content is not StackPanel main)throw new InvalidOperationException("Main page must not scroll");
             foreach(FrameworkElement child in main.Children) {
                 var bottom=child.TransformToVisual(Root).TransformPoint(new Windows.Foundation.Point(0,child.ActualHeight)).Y;
-                if(bottom>Root.ActualHeight-Root.Padding.Bottom+1 || child.ActualHeight+1<child.DesiredSize.Height)
+                if(bottom>Root.ActualHeight+1 || child.ActualHeight+1<child.DesiredSize.Height)
                     throw new InvalidOperationException($"Main child clipped: tiles={count}, warranty={warrantyVisible}, details={detailsVisible}, bottom={bottom}, root={Root.ActualHeight}");
             }
             var lastChild=(FrameworkElement)main.Children.Last();
+            var paintedHeight=await PaintedHeightAsync(lastChild);
+            var paintedBottom=lastChild.TransformToVisual(Root).TransformPoint(new Windows.Foundation.Point(0,paintedHeight)).Y;
+            if(Math.Abs(Root.ActualHeight-paintedBottom-24)>1)throw new InvalidOperationException($"Main painted gap mismatch: {Root.ActualHeight-paintedBottom}");
             var pt=lastChild.TransformToVisual(Root).TransformPoint(new Windows.Foundation.Point(0,0));
-            File.AppendAllText(Path.Combine(dir,"layout-"+name+".txt"),$"tiles={count} warranty={warrantyVisible} details={detailsVisible} root={Root.ActualWidth}x{Root.ActualHeight} client={AppWindow.ClientSize.Width}x{AppWindow.ClientSize.Height} canvas={canvas.ActualHeight}/{canvas.DesiredSize.Height} title={titleBar.ActualHeight} body={body.ActualHeight} main={main.ActualHeight}/{main.DesiredSize.Height} lastY={pt.Y} lastH={lastChild.ActualHeight}/{lastChild.DesiredSize.Height}\n");
+            File.AppendAllText(Path.Combine(dir,"layout-"+name+".txt"),$"tiles={count} warranty={warrantyVisible} details={detailsVisible} root={Root.ActualWidth}x{Root.ActualHeight} client={AppWindow.ClientSize.Width}x{AppWindow.ClientSize.Height} canvas={canvas.ActualHeight}/{canvas.DesiredSize.Height} title={titleBar.ActualHeight} body={body.ActualHeight} main={main.ActualHeight}/{main.DesiredSize.Height} inkH={paintedHeight} lastY={pt.Y} lastH={lastChild.ActualHeight}/{lastChild.DesiredSize.Height}\n");
             await SaveImage(Path.Combine(dir,$"main-{count}-warranty{warrantyVisible}-details{detailsVisible}-"+name));
         }
         // Model names are machine-specific and long names must fit the caption too.
