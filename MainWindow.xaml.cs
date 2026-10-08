@@ -208,6 +208,7 @@ public sealed partial class MainWindow : Window
                 if(!GetWindowRect(hwnd,out var rect))throw new InvalidOperationException("Drag bounds unavailable");
                 double scale=GetDpiForWindow(hwnd)/96d;
                 var origin=new NativePoint();ClientToScreen(hwnd,ref origin);rect.Left=origin.X;rect.Top=origin.Y;
+                if(Root.FlowDirection==FlowDirection.RightToLeft){start.X=Root.ActualWidth-start.X;end.X=Root.ActualWidth-end.X;}
                 SetCursorPos(rect.Left+(int)(start.X*scale),rect.Top+(int)(start.Y*scale));mouse_event(2,0,0,0,UIntPtr.Zero);await Task.Delay(120);
                 for(int step=1;step<=12;step++) {mouse_event(0x8001,(uint)((rect.Left+(start.X+(end.X-start.X)*step/12)*scale)*65535/(GetSystemMetrics(0)-1)),(uint)((rect.Top+(start.Y+(end.Y-start.Y)*step/12)*scale)*65535/(GetSystemMetrics(1)-1)),0,UIntPtr.Zero);await Task.Delay(25);}
                 mouse_event(4,0,0,0,UIntPtr.Zero);await Task.Delay(180);
