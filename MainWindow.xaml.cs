@@ -478,13 +478,13 @@ public sealed partial class MainWindow : Window
             int radius=(int)Math.Round(8*scale);
             SetWindowRgn(hwnd,CreateRoundRectRgn(0,top,target.Width+1,top+height+1,radius,radius),true);
         }
-        AppWindow.Hide();
+        // The old snapshot remains visible at its screen position while the
+        // larger surface is arranged. Do not hide/show during page navigation.
         AppWindow.MoveAndResize(envelope);Root.UpdateLayout();
         if(outgoingPage!=null)outgoingPage.Margin=new Thickness(0,(start.Y-envelopeTop)/scale,0,0);
         canvas.Margin=new Thickness(0,(target.Y-envelopeTop)/scale,0,0);
         Reveal(start.Y-envelopeTop,start.Height);
         await NextFrameAsync();Root.UpdateLayout();await NextFrameAsync();
-        AppWindow.Show();
         motion.Begin();
         var clock=Stopwatch.StartNew();int steps=0;
         var trace=new List<string>();
@@ -503,9 +503,9 @@ public sealed partial class MainWindow : Window
             await Task.Delay(10);await NextFrameAsync();
         }
         if(generation==geometryGeneration && AppWindow.IsVisible) {
-            AppWindow.Hide();canvas.Margin=new Thickness(0);
+            canvas.Margin=new Thickness(0);
             AppWindow.MoveAndResize(target);SetWindowRgn(hwnd,IntPtr.Zero,true);
-            Root.UpdateLayout();await NextFrameAsync();AppWindow.Show();
+            Root.UpdateLayout();await NextFrameAsync();
         }
         motion.Stop();canvas.Opacity=1;transform.Y=0;
 
