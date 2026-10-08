@@ -148,12 +148,14 @@ public sealed partial class MainWindow : Window
         return Task.Delay((int)time);
     }
 
-    void ShowFlyout(string? target, bool toggle)
+    async void ShowFlyout(string? target, bool toggle)
     {
         if (toggle && (AppWindow.IsVisible || (DateTime.UtcNow - lastHidden).TotalMilliseconds < 350)) { HideFlyout(); return; }
         ++animationGeneration;
         view = target ?? "main";
         Render();
+        await geometryReady;
+        if (!AppWindow.IsVisible && view != (target ?? "main")) return;
         if (tray.TryGetAnchor(out int x, out int y))
         {
             var area = DisplayArea.GetFromPoint(new PointInt32(x, y), DisplayAreaFallback.Nearest).WorkArea;
@@ -211,7 +213,7 @@ public sealed partial class MainWindow : Window
     {
         if (busy || preview) return;
         busy = true;
-        try { current = await device.ReadAsync(); Apply(); if(view=="main")ResizeForContent(); }
+        try { current = await device.ReadAsync(); Apply(); }
         catch (Exception e) { if (statusText != null) statusText.Text = e.Message; }
         finally { busy = false; }
     }
@@ -296,7 +298,7 @@ public sealed partial class MainWindow : Window
         return button;
     }
 
-    void Navigate(string target) { view = target; Render(); if (target == "battery") _ = LoadBatteryAsync(); if (target == "warranty") _ = LoadWarrantyAsync(false); }
+    async void Navigate(string target) { view = target; Render(); await geometryReady; if (target == "battery") _ = LoadBatteryAsync(); if (target == "warranty") _ = LoadWarrantyAsync(false); }
 
     void Render()
     {
@@ -331,51 +333,66 @@ public sealed partial class MainWindow : Window
         ResizeForContent();
     }
 
-    void ResizeForContent()
+    Task geometryReady=Task.CompletedTask;
+    readonly SemaphoreSlim geometryLock=new(1,1);
+    int geometryGeneration;
+    int nativeResizeCount;
+    double frameWidthPixels=double.NaN,frameHeightPixels=double.NaN;
+
+    void ResizeForContent() => geometryReady=FitGeometryAsync(++geometryGeneration);
+
+    static Task NextFrameAsync()
     {
-        // Realize control templates before measuring. In particular, HyperlinkButton's
-        // theme template has no desired height until it joins the live layout tree.
-        canvas.Height = double.NaN;
-        canvas.RowDefinitions[1].Height = view == "main" ? GridLength.Auto : new GridLength(1, GridUnitType.Star);
-        Root.UpdateLayout();
-        double requested;
-        if (view == "main") {
-            canvas.Measure(new Windows.Foundation.Size(472, double.PositiveInfinity));
-            requested=Math.Ceiling(canvas.DesiredSize.Height + Root.Padding.Top + Root.Padding.Bottom);
-        } else requested = 520 + Math.Max(36,titleBar.ActualHeight) + Root.Padding.Top + Root.Padding.Bottom;
-        var area = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Nearest).WorkArea;
-        double scale = Math.Max(1, GetDpiForWindow(hwnd) / 96d);
-        double height = Math.Min(requested, area.Height / scale - 16);
-        AppWindow.ResizeClient(new SizeInt32((int)Math.Ceiling(520 * scale), (int)Math.Ceiling(height * scale)));
-        if(view=="main" && Root.XamlRoot!=null)_ = FitMainAfterResizeAsync();
-        if (!preview && tray != null && tray.TryGetAnchor(out int x, out int y)) {
-            var work = DisplayArea.GetFromPoint(new PointInt32(x, y), DisplayAreaFallback.Nearest).WorkArea;
-            int left = Math.Clamp(x - AppWindow.Size.Width / 2, work.X, Math.Max(work.X, work.X + work.Width - AppWindow.Size.Width));
-            int top = Math.Clamp(y - AppWindow.Size.Height - 16, work.Y, Math.Max(work.Y, work.Y + work.Height - AppWindow.Size.Height));
-            AppWindow.Move(new PointInt32(left, top));
-        }
+        var done=new TaskCompletionSource<bool>();
+        EventHandler<object>? handler=null;
+        handler=(_,_)=>{CompositionTarget.Rendering-=handler;done.TrySetResult(true);};
+        CompositionTarget.Rendering+=handler;
+        return done.Task;
     }
 
-    int fitGeneration;
-    async Task FitMainAfterResizeAsync()
+    async Task FitGeometryAsync(int generation)
     {
-        int generation=++fitGeneration;
-        await Task.Delay(80);
-        if(generation!=fitGeneration || view!="main" || body.Content is not StackPanel main)return;
-        Root.UpdateLayout();
-        var last=(FrameworkElement)main.Children.Last();
-        double inkHeight=await PaintedHeightAsync(last);
-        if(generation!=fitGeneration || view!="main")return;
-        var bottom=last.TransformToVisual(Root).TransformPoint(new Windows.Foundation.Point(0,inkHeight)).Y;
-        double wanted=bottom+24;
-        double delta=wanted-Root.ActualHeight;
-        if(Math.Abs(delta)>0.5) {
+        await geometryLock.WaitAsync();
+        try {
+            if(generation!=geometryGeneration)return;
+            // Finish templates and arrange natural content before touching the HWND.
+            await NextFrameAsync();
+            if(generation!=geometryGeneration)return;
+            Root.UpdateLayout();
             double scale=Math.Max(1,GetDpiForWindow(hwnd)/96d);
-            // ResizeClient adds a hidden caption's height on this custom-caption window.
-            // Apply the observed root delta to the existing outer size instead.
-            var outer=AppWindow.Size;
-            AppWindow.Resize(new SizeInt32(outer.Width,Math.Max(100,outer.Height+(int)Math.Round(delta*scale))));
-        }
+            if(double.IsNaN(frameHeightPixels)) {
+                frameWidthPixels=AppWindow.Size.Width-Root.ActualWidth*scale;
+                frameHeightPixels=AppWindow.Size.Height-Root.ActualHeight*scale;
+            }
+            canvas.Height=double.NaN;
+            canvas.RowDefinitions[1].Height=view=="main"?GridLength.Auto:new GridLength(1,GridUnitType.Star);
+            canvas.Measure(new Windows.Foundation.Size(472,double.PositiveInfinity));
+            double naturalHeight=view=="main"?canvas.DesiredSize.Height:520+Math.Max(36,titleBar.DesiredSize.Height);
+            canvas.Arrange(new Windows.Foundation.Rect(24,15,472,naturalHeight));
+            double wanted=naturalHeight+Root.Padding.Top+Root.Padding.Bottom;
+            if(view=="main" && body.Content is StackPanel main) {
+                var last=(FrameworkElement)main.Children.Last();
+                double ink=await PaintedHeightAsync(last);
+                wanted=last.TransformToVisual(Root).TransformPoint(new Windows.Foundation.Point(0,ink)).Y+24;
+            }
+            if(generation!=geometryGeneration)return;
+            var work=DisplayArea.GetFromWindowId(AppWindow.Id,DisplayAreaFallback.Nearest).WorkArea;
+            wanted=Math.Min(wanted,work.Height/scale-16);
+            var desired=new SizeInt32((int)Math.Round(520*scale+frameWidthPixels),(int)Math.Round(wanted*scale+frameHeightPixels));
+            // One final outer-size commit; never bounce through ResizeClient first.
+            if(AppWindow.Size.Width!=desired.Width || AppWindow.Size.Height!=desired.Height) {
+                AppWindow.Resize(desired);nativeResizeCount++;
+            }
+            await NextFrameAsync();
+            Root.UpdateLayout();
+            await NextFrameAsync();
+            if(!preview && tray!=null && tray.TryGetAnchor(out int x,out int y)) {
+                var area=DisplayArea.GetFromPoint(new PointInt32(x,y),DisplayAreaFallback.Nearest).WorkArea;
+                int left=Math.Clamp(x-AppWindow.Size.Width/2,area.X,Math.Max(area.X,area.X+area.Width-AppWindow.Size.Width));
+                int top=Math.Clamp(y-AppWindow.Size.Height-16,area.Y,Math.Max(area.Y,area.Y+area.Height-AppWindow.Size.Height));
+                if(AppWindow.Position.X!=left || AppWindow.Position.Y!=top)AppWindow.Move(new PointInt32(left,top));
+            }
+        } finally {geometryLock.Release();}
     }
 
     async Task<double> PaintedHeightAsync(FrameworkElement element)
@@ -828,7 +845,7 @@ public sealed partial class MainWindow : Window
         warranty = new WarrantyResult(new DateTime(2022, 7, 29), new DateTime(2023, 7, 28), null);
         foreach (var target in new[] { "main", "settings", "battery", "warranty", "about" })
         {
-            view = target; Render();
+            view = target; Render(); await geometryReady;
             foreach (var button in tileButtons.Values) button.IsEnabled = true;
             await Task.Delay(target == "main" ? 2500 : 1200);
             await SaveImage(target == "main" ? path : Path.Combine(dir, target + "-" + name));
@@ -836,7 +853,7 @@ public sealed partial class MainWindow : Window
         // Verify dynamic height with a single tile row and then with no quick tiles.
         foreach (var count in new[] { 5, 0 }) {
             settings.HiddenTiles = Tiles.Skip(count).Select(t => t.Id).ToList();
-            view = "main"; Render();
+            view = "main"; Render(); await geometryReady;
             foreach (var button in tileButtons.Values) button.IsEnabled = true;
             await Task.Delay(1200);
             await SaveImage(Path.Combine(dir, "tiles" + count + "-" + name));
@@ -844,7 +861,7 @@ public sealed partial class MainWindow : Window
         // Every tile-row/link combination must fit without a main-page scroll host.
         foreach(var count in new[]{7,5,0}) foreach(var warrantyVisible in new[]{true,false}) foreach(var detailsVisible in new[]{true,false}) {
             settings.HiddenTiles=Tiles.Skip(count).Select(t=>t.Id).ToList();settings.ShowWarranty=warrantyVisible;settings.ShowBatteryDetails=detailsVisible;
-            view="main";Render();await Task.Delay(400);
+            view="main";Render();await geometryReady;await Task.Delay(400);
             Root.UpdateLayout();
             if(body.Content is not StackPanel main)throw new InvalidOperationException("Main page must not scroll");
             foreach(FrameworkElement child in main.Children) {
@@ -862,7 +879,7 @@ public sealed partial class MainWindow : Window
         }
         // Model names are machine-specific and long names must fit the caption too.
         foreach(var model in new[]{"LOQ 15IRX9","Legion Pro 7 16IRX10H Long Device Model Name"}) {
-            DeviceInfo.Override=model;settings.HiddenTiles=Tiles.Skip(5).Select(t=>t.Id).ToList();settings.ShowWarranty=false;view="main";Render();await Task.Delay(400);
+            DeviceInfo.Override=model;settings.HiddenTiles=Tiles.Skip(5).Select(t=>t.Id).ToList();settings.ShowWarranty=false;view="main";Render();await geometryReady;await Task.Delay(400);
             if(titleBar.ActualHeight+1<titleBar.DesiredSize.Height)throw new InvalidOperationException("Dynamic model header clipped");
             await SaveImage(Path.Combine(dir,"model-"+(model.StartsWith("LOQ")?"loq":"long")+"-"+name));
         }
@@ -872,13 +889,13 @@ public sealed partial class MainWindow : Window
         // Low and critical battery colours.
         foreach (var level in new[] { 20, 5 })
         {
-            view = "main"; current = current with { Percent = level, Plugged = false, Charging = false }; Render();
+            view = "main"; current = current with { Percent = level, Plugged = false, Charging = false }; Render(); await geometryReady;
             foreach (var button in tileButtons.Values) button.IsEnabled = true;
             await Task.Delay(1200);
             await SaveImage(Path.Combine(dir, "level" + level + "-" + name));
         }
         var devicePreview=new DeviceDashboardWindow(settings.Theme,current,true);
-        dashboard=devicePreview;view="device";Render();
+        dashboard=devicePreview;view="device";Render();await geometryReady;
         await Task.Delay(1500);
         devicePreview.AssertPreviewReady();
         await SaveImage(Path.Combine(dir,"device-"+name));
