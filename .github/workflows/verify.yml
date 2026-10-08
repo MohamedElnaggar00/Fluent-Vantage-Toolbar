@@ -21,11 +21,18 @@ jobs:
               if($language -eq 'arabic') { $arguments += '--arabic' }
               $p=Start-Process .\out\FluentLegionToolbar.exe -ArgumentList $arguments -PassThru
               if(-not $p.WaitForExit(90000)) { Stop-Process $p.Id -Force; throw 'Capture timeout' }
-              if($p.ExitCode -ne 0 -or -not (Test-Path "$language-$theme.png")) { throw 'Capture failed' }
+              if($p.ExitCode -ne 0 -or -not (Test-Path "$language-$theme.png")) {
+                Write-Host "Capture exit: $($p.ExitCode)"
+                Get-WinEvent -FilterHashtable @{LogName='Application';StartTime=(Get-Date).AddMinutes(-5)} -ErrorAction SilentlyContinue | Where-Object {$_.ProviderName -in @('.NET Runtime','Application Error','Windows Error Reporting')} | Format-List TimeCreated,ProviderName,Message
+                if(Test-Path out/launch-error.txt) { Get-Content out/launch-error.txt }
+                Compress-Archive out/* Fluent-Legion-toolbar-runtime-dependent.zip
+                throw 'Capture failed'
+              }
             }
           }
           Compress-Archive out/* Fluent-Legion-toolbar-runtime-dependent.zip
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: private-test-build-and-captures
           path: |
