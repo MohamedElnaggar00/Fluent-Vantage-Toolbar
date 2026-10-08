@@ -567,9 +567,13 @@ public sealed partial class MainWindow : Window
             await Task.Delay(10);await NextFrameAsync();
         }
         if(generation==geometryGeneration && AppWindow.IsVisible) {
+            // Reset the compositor surface at the one final native resize. The
+            // transition itself remains continuously visible within its region.
+            AppWindow.Hide();
             SetWindowPos(hwnd,IntPtr.Zero,target.X,target.Y,target.Width,target.Height,0x0104);nativeResizeCount++;
             canvas.Margin=new Thickness(0);SetWindowRgn(hwnd,IntPtr.Zero,true);
-            Root.UpdateLayout();await NextFrameAsync();
+            Root.UpdateLayout();AppWindow.Show();
+            await NextFrameAsync();
         }
         motion.Stop();canvas.Opacity=1;transform.Y=0;
 
