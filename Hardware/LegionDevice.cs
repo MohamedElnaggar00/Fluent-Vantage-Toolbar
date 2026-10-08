@@ -28,6 +28,7 @@ public sealed class LegionDevice
         return (Read(14), Read(16), Read(18));
     }
     bool targetModel;
+    bool fnDisplayState = true; // Owner-requested initial UI assumption, not a firmware write.
     bool FnInverted => DeviceInfo.FnInverted;
     uint Exchange(uint command, uint ioctl = 0x831020F8)
     {
@@ -98,7 +99,7 @@ public sealed class LegionDevice
         try {(hz,rates)=DisplayControl.Read();}catch(Exception e){errors.Add("Display: "+e.Message);}
         foreach (var error in errors) DiagnosticLog.Write(error);
         DiagnosticLog.Write($"State model={model} type={DeviceInfo.MachineType} supported={targetModel} fn={fn} micMuted={muted} touchpadLocked={locked} usb={usb} hz={hz} mode={mode}");
-        return new DeviceState(percent, plugged, charging, mode, muted, locked, model, errors.ToArray(),fn,usb,hz,rates);
+        return new DeviceState(percent, plugged, charging, mode, muted, locked, model, errors.ToArray(), fn.HasValue ? fnDisplayState : null,usb,hz,rates);
     });
     // Same control path as the reference toolkit: EnergyDrv settings IOCTL, query 2, bit 10 = Fn Lock, set 0xE = on, 0xF = off.
     // No support bit is required first; the query itself succeeding is the capability check. The state is read back with retries.
@@ -108,7 +109,7 @@ public sealed class LegionDevice
         Exchange(hardwareLocked?14u:15u,0x831020E8);
         for(int i=0;i<10;i++) {
             await Task.Delay(100);
-            if(((Exchange(2,0x831020E8)&1024)!=0)==hardwareLocked) return;
+            if(((Exchange(2,0x831020E8)&1024)!=0)==hardwareLocked) { fnDisplayState = locked; return; }
         }
         throw new InvalidOperationException("Fn Lock state was not confirmed.");
     });
