@@ -45,6 +45,7 @@ public sealed partial class MainWindow : Window
     readonly List<Button> updateButtons = new();
     readonly CancellationTokenSource updateLifetime=new();
     UpdateNoticeWindow? updateNotice;
+    bool flyoutVisible, showingFlyout;
     int animationGeneration;
     Microsoft.UI.Xaml.Media.Animation.Storyboard? flyoutMotion;
     string view = "main";
@@ -61,6 +62,7 @@ public sealed partial class MainWindow : Window
 
     [DllImport("dwmapi.dll")] static extern int DwmSetWindowAttribute(IntPtr hwnd,int attribute,ref uint value,int size);
     [DllImport("dwmapi.dll")] static extern int DwmFlush();
+    [DllImport("dwmapi.dll")] static extern int DwmGetWindowAttribute(IntPtr hwnd,int attribute,out uint value,int size);
     [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr hwnd,IntPtr insertAfter,int x,int y,int cx,int cy,uint flags);
     [DllImport("user32.dll")] static extern bool RedrawWindow(IntPtr hwnd,IntPtr rect,IntPtr region,uint flags);
     [DllImport("user32.dll")] static extern int SetWindowRgn(IntPtr hwnd,IntPtr region,bool redraw);
@@ -82,6 +84,8 @@ public sealed partial class MainWindow : Window
         SystemBackdrop = new MicaBackdrop();
         ExtendsContentIntoTitleBar = true;
         hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        SetCloaked(true); // Compose while invisible; SW_SHOW exposes an unpainted XAML surface.
+        uint disableTransitions=1;DwmSetWindowAttribute(hwnd,3,ref disableTransitions,4);
         try { AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "app.ico")); } catch { }
         if (AppWindow.Presenter is OverlappedPresenter presenter) { presenter.SetBorderAndTitleBar(false, false); presenter.IsResizable = false; presenter.IsMaximizable = false; presenter.IsMinimizable = false; presenter.IsAlwaysOnTop = true; }
         // Presenter flag setters may restore WS_BORDER after SetBorderAndTitleBar.
@@ -118,9 +122,9 @@ public sealed partial class MainWindow : Window
         tray.NativeTip = true; tray.SetTip("Fluent Vantage Toolbar");
         AppWindow.Closing += (_, e) => { if (!exiting && !preview) { e.Cancel = true; HideFlyout(); } };
         Closed += (_, _) => { updateLifetime.Cancel();updateNotice?.Close();contextMenu?.Close();timer.Stop(); tray.Dispose(); };
-        Activated += (_, e) => { if (e.WindowActivationState == WindowActivationState.Deactivated && !preview && !dialogOpen && !pageNavigating) HideFlyout(); };
+        Activated += (_, e) => { if (e.WindowActivationState == WindowActivationState.Deactivated && !preview && !dialogOpen && !pageNavigating && !showingFlyout) HideFlyout(); };
         Root.ActualThemeChanged += (_, _) => { if (!preview) Render(); };
-        timer.Tick += async (_, _) => { if (AppWindow.IsVisible && view == "main") await Refresh(); };
+        timer.Tick += async (_, _) => { if (flyoutVisible && view == "main") await Refresh(); };
         Root.SizeChanged += (_, _) => DiagnosticLog.Write($"Layout dpi={GetDpiForWindow(hwnd)} outer={AppWindow.Size.Width}x{AppWindow.Size.Height} client={AppWindow.ClientSize.Width}x{AppWindow.ClientSize.Height} root={Root.ActualWidth}x{Root.ActualHeight} canvas={canvas.ActualWidth}x{canvas.ActualHeight}");
         Root.Loaded += async (_, _) => { if (preview) await Capture(); };
 
@@ -132,7 +136,7 @@ public sealed partial class MainWindow : Window
             _ = Refresh();
             ListenForShowRequests();
             ListenForExitRequests();
-            AppWindow.Hide();
+            AppWindow.Show(false);
         }
     }
 
@@ -149,45 +153,45 @@ public sealed partial class MainWindow : Window
         catch { }
     }
 
-    async void HideFlyout()
+    void SetCloaked(bool cloak)
     {
-        if(!AppWindow.IsVisible)return;
-        int generation=++animationGeneration;lastHidden=DateTime.UtcNow;
-        await AnimateFlyout(false);
-        if(generation==animationGeneration){AppWindow.Hide();Root.Opacity=1;Root.RenderTransform=new TranslateTransform();}
+        uint value=cloak?1u:0u;
+        Marshal.ThrowExceptionForHR(DwmSetWindowAttribute(hwnd,13,ref value,4));
+        if(DwmGetWindowAttribute(hwnd,14,out uint actual,4)>=0 && ((actual&1)!=0)!=cloak)
+            throw new InvalidOperationException("DWM cloak state differs from requested state");
     }
-    Task AnimateFlyout(bool show)
+    void HideFlyout()
     {
-        flyoutMotion?.Stop();Root.Opacity=1;Root.RenderTransform=new TranslateTransform();
-        return Task.CompletedTask;
+        ++animationGeneration;lastHidden=DateTime.UtcNow;flyoutVisible=false;
+        SetCloaked(true);
     }
-
+    async Task PresentPreparedAsync()
+    {
+        // Cloaking keeps DWM composition alive, unlike SW_HIDE. Wait for the XAML
+        // render and composition commit before exposing the already-painted surface.
+        Root.UpdateLayout();await NextFrameAsync();
+        await Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(Root).Compositor.RequestCommitAsync();
+        DwmFlush();
+    }
     async void ShowFlyout(string? target, bool toggle)
     {
-        if (toggle && (AppWindow.IsVisible || (DateTime.UtcNow - lastHidden).TotalMilliseconds < 350)) { HideFlyout(); return; }
-        ++animationGeneration;
-        view = target ?? "main";
-        Render();
-        await geometryReady;
-        if (!AppWindow.IsVisible && view != (target ?? "main")) return;
-        if (tray.TryGetAnchor(out int x, out int y))
-        {
-            var area = DisplayArea.GetFromPoint(new PointInt32(x, y), DisplayAreaFallback.Nearest).WorkArea;
-            int left = Math.Clamp(x - AppWindow.Size.Width / 2, area.X, Math.Max(area.X, area.X + area.Width - AppWindow.Size.Width));
-            int top = Math.Clamp(y - AppWindow.Size.Height - 16, area.Y, Math.Max(area.Y, area.Y + area.Height - AppWindow.Size.Height));
-            AppWindow.Move(new PointInt32(left, top));
-        }
-        else
-        {
-            var area = DisplayArea.Primary.WorkArea;
-            AppWindow.Move(new PointInt32(area.X + area.Width - AppWindow.Size.Width - 12, area.Y + area.Height - AppWindow.Size.Height - 12));
-            DiagnosticLog.Write("Tray anchor not ready; using taskbar work-area fallback.");
-        }
-        HideFromTaskbar();
-        AppWindow.Show(); Activate(); SetForegroundWindow(hwnd);
-        _ = AnimateFlyout(true);
-        PositionTitleBar();
-        _ = Refresh();
+        if (toggle && (flyoutVisible || showingFlyout || (DateTime.UtcNow-lastHidden).TotalMilliseconds<350)) { HideFlyout();return; }
+        int generation=++animationGeneration;showingFlyout=true;
+        try {
+            SetCloaked(true);flyoutVisible=false;
+            view=target??"main";Render();await geometryReady;
+            var area=DisplayArea.GetFromWindowId(AppWindow.Id,DisplayAreaFallback.Nearest).WorkArea;
+            int x=area.X+area.Width-AppWindow.Size.Width/2-12,y=area.Y+area.Height+4;
+            if(tray.TryGetAnchor(out int anchorX,out int anchorY)){x=anchorX;y=anchorY;area=DisplayArea.GetFromPoint(new PointInt32(x,y),DisplayAreaFallback.Nearest).WorkArea;}
+            int left=Math.Clamp(x-AppWindow.Size.Width/2,area.X,Math.Max(area.X,area.X+area.Width-AppWindow.Size.Width));
+            int top=Math.Clamp(y-AppWindow.Size.Height-16,area.Y,Math.Max(area.Y,area.Y+area.Height-AppWindow.Size.Height));
+            AppWindow.Move(new PointInt32(left,top));HideFromTaskbar();
+            if(!AppWindow.IsVisible)AppWindow.Show(false);
+            await PresentPreparedAsync();
+            if(generation!=animationGeneration)return;
+            SetCloaked(false);flyoutVisible=true;Activate();SetForegroundWindow(hwnd);
+            PositionTitleBar();_ = Refresh();
+        } finally {showingFlyout=false;}
     }
 
     void ListenForShowRequests()
@@ -369,7 +373,7 @@ public sealed partial class MainWindow : Window
         pageNavigating=true;
         try {
             await geometryReady;view=target;Render();await geometryReady;
-            if(MotionEnabled && AppWindow.IsVisible) {
+            if(MotionEnabled && flyoutVisible) {
                 var shift=new TranslateTransform { Y=24 };body.RenderTransform=shift;
                 var motion=new Microsoft.UI.Xaml.Media.Animation.Storyboard();
                 var done=new TaskCompletionSource<bool>();motion.Completed+=(_,_)=>done.TrySetResult(true);
@@ -388,7 +392,7 @@ public sealed partial class MainWindow : Window
 
     void Render()
     {
-        canvas.Margin=new Thickness(0);SetWindowRgn(hwnd,IntPtr.Zero,true);
+        canvas.Margin=new Thickness(0);
         L.Set(settings.Language);
         ApplyTheme();
         restoreAfterGeometry=false;
@@ -476,7 +480,7 @@ public sealed partial class MainWindow : Window
             {
                 if(AppWindow.Size.Width!=desired.Width || AppWindow.Size.Height!=desired.Height) {
                     AppWindow.Resize(desired);nativeResizeCount++;
-                    Root.UpdateLayout();RedrawWindow(hwnd,IntPtr.Zero,IntPtr.Zero,0x0185);DwmFlush();
+                    Root.UpdateLayout();
                 }
                 await NextFrameAsync();Root.UpdateLayout();await NextFrameAsync();
                 if(!preview && tray!=null && tray.TryGetAnchor(out int x,out int y)) {
@@ -486,7 +490,7 @@ public sealed partial class MainWindow : Window
                     if(AppWindow.Position.X!=left || AppWindow.Position.Y!=top)AppWindow.Move(new PointInt32(left,top));
                 }
             }
-            if(restoreAfterGeometry && generation==geometryGeneration){restoreAfterGeometry=false;AppWindow.Show();}
+            
             if(preview && args.Contains("--interactive")) {
                 if(!GetWindowRect(hwnd,out var actual) || actual.Right-actual.Left!=desired.Width || actual.Bottom-actual.Top!=desired.Height)throw new InvalidOperationException("Native bounds differ from settled content size");
                 var region=CreateRectRgn(0,0,0,0);int kind=GetWindowRgn(hwnd,region);DeleteObject(region);
@@ -1046,6 +1050,7 @@ public sealed partial class MainWindow : Window
         // Deterministic render fixture, clearly labelled as preview. Hardware services and the network are never called.
         int index = Array.IndexOf(args, "--capture"); string path = args[index + 1];
         string dir = Path.GetDirectoryName(Path.GetFullPath(path)) ?? ".", name = Path.GetFileName(path);
+        await geometryReady;await PresentPreparedAsync();SetCloaked(false);flyoutVisible=true;
         current = new DeviceState(60, true, false, ChargeMode.Conservation, false, false, "Visual fixture", [], true, 2, 165, [60, 165],ThermalMode.Balanced);
         batteryDetails = new BatteryDetails(99.9, 60.0, 59.9, 36, new DateTime(2022, 1, 22), []);
         warranty = new WarrantyResult(new DateTime(2022, 7, 29), new DateTime(2023, 7, 28), null);
@@ -1153,10 +1158,10 @@ public sealed partial class MainWindow : Window
             var phases=Path.Combine(dir,"interactive-phases.txt");
             await Task.WhenAll(NavigateAsync("settings"),NavigateAsync("battery"),NavigateAsync("about"));
             await NavigateAsync("main");
-            AppWindow.Hide();
+            HideFlyout();
             for(int cycle=0;cycle<3;cycle++) {
                 File.AppendAllText(phases,$"{DateTime.UtcNow:O} open {cycle}\n");
-                ShowFlyout("main",false);await geometryReady;await Task.Delay(500);
+                ShowFlyout("main",false);while(showingFlyout)await Task.Delay(10);await Task.Delay(500);
                 int before=nativeResizeCount;
                 for(int refresh=0;refresh<5;refresh++){Apply();await NextFrameAsync();}
                 if(nativeResizeCount!=before)throw new InvalidOperationException("Unchanged refresh resized the window");
@@ -1173,9 +1178,15 @@ public sealed partial class MainWindow : Window
                 File.AppendAllText(phases,$"{DateTime.UtcNow:O} hide {cycle}\n");
                 HideFlyout();await Task.Delay(250);
             }
+            for(int cycle=0;cycle<20;cycle++) {
+                File.AppendAllText(phases,$"{DateTime.UtcNow:O} reopen-stress {cycle}\n");
+                ShowFlyout("main",false);while(showingFlyout)await Task.Delay(10);
+                if(!flyoutVisible)throw new InvalidOperationException("Reopen was cancelled");
+                await Task.Delay(180);HideFlyout();await Task.Delay(100);
+            }
             File.AppendAllText(phases,$"PASS serialized geometry, three open/settings/main/hide cycles; unchanged refresh native resize count unchanged. Actual DPI={GetDpiForWindow(hwnd)}\n");
         }
-        Close();
+        SetCloaked(true);Close();
     }
 }
 
