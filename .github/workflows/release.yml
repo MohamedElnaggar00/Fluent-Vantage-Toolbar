@@ -105,6 +105,36 @@ jobs:
           Move-Item installers/FluentVantageToolbar-Setup.exe "release/FluentVantageToolbar-$v-Setup.exe"
           Move-Item installers/FluentVantageToolbar-Setup-with-dotnet.exe "release/FluentVantageToolbar-$v-Setup-with-dotnet.exe"
           Get-ChildItem release | Select-Object Name,Length
+      - name: Verify upgrade closes running previous toolbar
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download v0.3.0 --pattern '*-portable-x64.zip' --dir previous
+          if($LASTEXITCODE -ne 0) { throw 'Could not get previous release for upgrade test' }
+          Expand-Archive (Get-ChildItem previous/*.zip).FullName previous/app
+          $old=Get-ChildItem previous/app -Recurse -Filter FluentLegionToolbar.exe | Select-Object -First 1
+          $dest=Join-Path $env:RUNNER_TEMP 'toolbar-upgrade-test'
+          New-Item -ItemType Directory -Force $dest | Out-Null
+          Copy-Item (Join-Path $old.Directory.FullName '*') $dest -Recurse -Force
+          $running=Start-Process (Join-Path $dest 'FluentLegionToolbar.exe') -ArgumentList '--no-elevate','--show' -PassThru
+          Start-Sleep -Seconds 4
+          if($running.HasExited){throw 'Previous toolbar failed to start: cannot claim upgrade verified'}
+          $setup=Get-ChildItem release/*Setup-with-dotnet.exe | Select-Object -First 1
+          $log=Join-Path $PWD 'upgrade-test.log'
+          $install=Start-Process $setup.FullName -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/TASKS=',"/DIR=$dest", "/LOG=$log" -Wait -PassThru
+          $running.Refresh()
+          if($install.ExitCode -ne 0 -or -not $running.HasExited){throw 'Upgrade did not close old instance and install successfully'}
+          $new=Start-Process (Join-Path $dest 'FluentLegionToolbar.exe') -ArgumentList '--no-elevate','--show' -PassThru
+          Start-Sleep -Seconds 4
+          if($new.HasExited){throw 'Updated toolbar failed to start'}
+          Stop-Process -Id $new.Id -Force
+          Write-Host 'PASS: running previous app closed, silent upgrade completed, new app launched'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: upgrade-test-log
+          path: upgrade-test.log
       - name: Publish GitHub Release
         shell: pwsh
         env:
