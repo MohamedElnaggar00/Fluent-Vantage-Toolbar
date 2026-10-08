@@ -333,12 +333,12 @@ public sealed partial class MainWindow : Window
     Brush CardBackground => Dark ? Rgb(255, 255, 255, 0x0D) : Rgb(255, 255, 255, 0xB3);
     Brush CardStroke => Dark ? Rgb(255, 255, 255, 0x29) : Rgb(0, 0, 0, 0x0F);
     Brush Primary => Dark ? Rgb(255, 255, 255) : Rgb(0, 0, 0, 0xE4);
-    static Windows.UI.Color BatteryColorFor(int? percent) => percent switch
+    Windows.UI.Color BatteryColorFor(int? percent) => percent switch
     {
         null => Windows.UI.Color.FromArgb(255, 156, 218, 155),
         <= 5 => Windows.UI.Color.FromArgb(255, 255, 153, 164),   // Windows 11 critical
         <= 20 => Windows.UI.Color.FromArgb(255, 252, 225, 0),    // Windows 11 caution
-        _ => Windows.UI.Color.FromArgb(255, 156, 218, 155),      // green sampled from the supplied Windows 11 tray battery
+        _ => ParseAccent(settings.AccentColor) ?? Windows.UI.Color.FromArgb(255, 156, 218, 155), // healthy battery follows the applied accent
     };
 
     // ---- view building ----
@@ -1158,7 +1158,8 @@ public sealed partial class MainWindow : Window
             await SaveImage(Path.Combine(dir,$"icons-{(off ? "off" : "on")}-{name}"));
         }
         foreach(string accent in new[]{"#0078D4","#744DA9","#D83B01"}) {
-            settings.AccentColor=accent;view="main";Render();await geometryReady;
+            settings.AccentColor=accent;current=current! with { Percent=60 };view="main";Render();await geometryReady;
+            if(BatteryColorFor(60)!=ParseAccent(accent) || BatteryColorFor(20)!=Windows.UI.Color.FromArgb(255,252,225,0) || BatteryColorFor(5)!=Windows.UI.Color.FromArgb(255,255,153,164))throw new InvalidOperationException("Battery accent or warning thresholds failed");
             var hoverTile=tileButtons["fn"];hoverTile.IsEnabled=true;hoverTile.IsChecked=true;
             var normal=((SolidColorBrush)hoverTile.Resources["ToggleButtonBackgroundChecked"]).Color;
             var hover=((SolidColorBrush)hoverTile.Resources["ToggleButtonBackgroundCheckedPointerOver"]).Color;
