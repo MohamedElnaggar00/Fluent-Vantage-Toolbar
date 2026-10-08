@@ -186,13 +186,27 @@ jobs:
           $existingTag = git ls-remote --tags origin "refs/tags/$tag"
           if($existingTag -and -not $replace) { throw "Tag $tag already exists. Choose a fresh version; old tags are immutable." }
           $notes = @"
-          Fluent Vantage Toolbar $v (private build, built from commit ${{ github.sha }}).
+          ## What's new in 0.3.7
+          - Fixed blank black frames when reopening from the tray by keeping the window composed while hidden (DWM cloaking).
+          - Native window resizing is instant; the page content keeps its fade/rise animation.
+          - Updates is last in Settings; About uses "GitHub Repo Link".
+          - Fixed custom-accent hover colors and the healthy-battery color.
+          - Installers create desktop and Start menu shortcuts.
+          - Added the thermal tile: Quiet, Balanced and Performance, with the requested icons. Startup only reads the current mode; clicks cycle it. Performance requires AC power. Thermal replaces Fn Lock by default; Fn Lock remains available in Settings.
+          - Added native WinUI drag reorder in Settings and saved toolbar order.
 
-          - FluentVantageToolbar-$v-portable-x64.zip: no install, needs the .NET 8 Desktop Runtime.
-          - FluentVantageToolbar-$v-Setup.exe: installer, needs the .NET 8 Desktop Runtime (warns if missing).
-          - FluentVantageToolbar-$v-Setup-with-dotnet.exe: installer with .NET bundled, nothing else to install.
+          ## Validation and limits
+          - CI desktop checks covered English/Arabic, light/dark, navigation and 80 additional tray reopens: 2,943 captured frames, no black windows or broad black strips at DPI 96.
+          - Thermal mappings and read-only startup code were checked in CI. Thermal hardware writes were not tested on a physical Lenovo device.
+          - Native drag reorder compiled; actual pointer drag/drop and saved order across a real restart still need device testing.
+          - Installer shortcut and upgrade checks run in CI. Not install-tested on every Legion/LOQ model or GPU/DPI combination.
 
-          Built by CI only. Not yet install-tested on every Legion model.
+          ## Downloads
+          - FluentVantageToolbar-$v-portable-x64.zip: portable, requires .NET 8 Desktop Runtime.
+          - FluentVantageToolbar-$v-Setup.exe: small installer, requires .NET 8 Desktop Runtime.
+          - FluentVantageToolbar-$v-Setup-with-dotnet.exe: installer with .NET bundled.
+
+          Built from commit ${{ github.sha }}.
           "@
           if($replace) {
             gh release upload $tag (Get-ChildItem release).FullName --clobber
