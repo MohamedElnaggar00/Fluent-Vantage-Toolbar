@@ -15,6 +15,16 @@ jobs:
         run: |
           msbuild FluentLegionToolbar.csproj /restore /t:Publish /p:Configuration=Release /p:Platform=x64 /p:RuntimeIdentifier=win-x64 /p:SelfContained=false /p:PublishDir=out/
           if($LASTEXITCODE -ne 0) { throw 'Build failed' }
+          $buildDir=Join-Path $PWD 'bin/x64/Release/net8.0-windows10.0.19041.0/win-x64'
+          Get-ChildItem $buildDir -Recurse -Include *.xbf,*.pri | ForEach-Object {
+            $relative=$_.FullName.Substring($buildDir.Length+1)
+            $destination=Join-Path (Join-Path $PWD 'out') $relative
+            New-Item -ItemType Directory -Force (Split-Path $destination) | Out-Null
+            Copy-Item $_.FullName $destination -Force
+          }
+          Get-ChildItem out -Recurse -Include *.xbf,*.pri | Select-Object FullName,Length
+          if(-not(Test-Path out/MainWindow.xbf)) { throw 'Compiled window XAML missing from published payload' }
+
           foreach($language in @('english','arabic')) {
             foreach($theme in @('light','dark')) {
               $arguments=@('--capture',(Join-Path $PWD "$language-$theme.png"),"--$theme")
