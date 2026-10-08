@@ -750,6 +750,7 @@ public sealed partial class MainWindow : Window
         var devicePreview=new DeviceDashboardWindow(settings.Theme,current,true);
         dashboard=devicePreview;view="device";Render();
         await Task.Delay(1500);
+        devicePreview.AssertPreviewReady();
         await SaveImage(Path.Combine(dir,"device-"+name));
         await devicePreview.PreviewPositionAsync(false,true);
         await SaveImage(Path.Combine(dir,"device-revealed-"+name));
