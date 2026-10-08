@@ -344,7 +344,7 @@ public sealed partial class MainWindow : Window
             Root.UpdateLayout();
             var main=(StackPanel)body.Content;
             var last=(FrameworkElement)main.Children.Last();
-            var bottom=last.TransformToVisual(Root).TransformPoint(new Windows.Foundation.Point(0,last.ActualHeight)).Y;
+            var bottom=Root.XamlRoot==null ? canvas.DesiredSize.Height+Root.Padding.Top : last.TransformToVisual(Root).TransformPoint(new Windows.Foundation.Point(0,last.ActualHeight)).Y;
             requested=Math.Ceiling(bottom+24);
             DiagnosticLog.Write($"Main margins root={Root.ActualHeight} lastBottom={bottom} requested={requested} dpi={GetDpiForWindow(hwnd)}");
         } else requested = 520 + Math.Max(36,titleBar.ActualHeight) + Root.Padding.Top + Root.Padding.Bottom;
