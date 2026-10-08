@@ -12,6 +12,12 @@ A small Windows 11-style toolbar for Lenovo **Legion** and **LOQ** laptops.
 
 </div>
 
+<p align="center">
+  <img src="2-hero-main-taskbar-48cf505e.jpg" width="560" alt="Fluent Vantage Toolbar open above the Windows taskbar on the developer's Legion 5, with green active tiles and descriptive labels">
+</p>
+
+<p align="center"><em>The main flyout on the developer's own laptop. Battery, quick controls and device details, one click from the tray.</em></p>
+
 ---
 
 ## Why this project?
