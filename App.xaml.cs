@@ -28,7 +28,7 @@ public partial class App : Application
                 if (!first) { if (!background) Startup.SignalShow(); Environment.Exit(0); return; }
             }
             window = new MainWindow(background && !capture);
-            if (!(background && !capture)) window.Activate();
+            if (!(background && !capture)) if (capture) window.Activate(); else window.OpenInitial();
         }
         catch(Exception e) { Log(e); throw; }
     }
