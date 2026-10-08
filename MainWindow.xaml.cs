@@ -45,7 +45,8 @@ public sealed partial class MainWindow : Window
     readonly List<Button> updateButtons = new();
     readonly CancellationTokenSource updateLifetime=new();
     UpdateNoticeWindow? updateNotice;
-    bool flyoutVisible, showingFlyout;
+    bool flyoutVisible, showingFlyout, reorderMode, reordering;
+    StackPanel? reorderRows;
     int animationGeneration;
     Microsoft.UI.Xaml.Media.Animation.Storyboard? flyoutMotion;
     string view = "main";
@@ -55,6 +56,8 @@ public sealed partial class MainWindow : Window
     Border? batteryFill; Grid? batteryFillHost;
     Windows.UI.Color batteryColor = Windows.UI.Color.FromArgb(255, 156, 218, 155);
 
+    [DllImport("user32.dll")] static extern bool SetCursorPos(int x,int y);
+    [DllImport("user32.dll")] static extern void mouse_event(uint flags,uint dx,uint dy,uint data,UIntPtr extra);
     [DllImport("user32.dll")] static extern uint GetDpiForWindow(IntPtr hwnd);
     [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr hwnd);
     [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")] static extern IntPtr GetWindowLongPtr(IntPtr hwnd, int index);
@@ -122,7 +125,7 @@ public sealed partial class MainWindow : Window
         tray.NativeTip = true; tray.SetTip("Fluent Vantage Toolbar");
         AppWindow.Closing += (_, e) => { if (!exiting && !preview) { e.Cancel = true; HideFlyout(); } };
         Closed += (_, _) => { updateLifetime.Cancel();updateNotice?.Close();contextMenu?.Close();timer.Stop(); tray.Dispose(); };
-        Activated += (_, e) => { if (e.WindowActivationState == WindowActivationState.Deactivated && !preview && !dialogOpen && !pageNavigating && !showingFlyout) HideFlyout(); };
+        Activated += (_, e) => { if (e.WindowActivationState == WindowActivationState.Deactivated && !preview && !dialogOpen && !pageNavigating && !showingFlyout && !reordering) HideFlyout(); };
         Root.ActualThemeChanged += (_, _) => { if (!preview) Render(); };
         timer.Tick += async (_, _) => { if (flyoutVisible && view == "main") await Refresh(); };
         Root.SizeChanged += (_, _) => DiagnosticLog.Write($"Layout dpi={GetDpiForWindow(hwnd)} outer={AppWindow.Size.Width}x{AppWindow.Size.Height} client={AppWindow.ClientSize.Width}x{AppWindow.ClientSize.Height} root={Root.ActualWidth}x{Root.ActualHeight} canvas={canvas.ActualWidth}x{canvas.ActualHeight}");
@@ -184,6 +187,34 @@ public sealed partial class MainWindow : Window
         var done=new TaskCompletionSource<bool>();motion.Completed+=(_,_)=>done.TrySetResult(true);motion.Begin();
         return done.Task;
     }
+    async Task VerifyPointerReorderAsync(string dir)
+    {
+        reorderMode=true;await NavigateAsync("settings");Render();await geometryReady;
+        if(body.Content is ScrollViewer scroll && reorderRows is {} rows) {
+            Root.UpdateLayout();
+            double offset=rows.TransformToVisual((UIElement)scroll.Content).TransformPoint(new Windows.Foundation.Point()).Y;
+            scroll.ChangeView(null,Math.Max(0,offset-80),null,true);await Task.Delay(200);
+            for(int pass=0;pass<2;pass++) {
+                var from=(FrameworkElement)rows.Children[pass==0?0:2];var to=(FrameworkElement)rows.Children[pass==0?2:0];
+                string id=(string)from.Tag;
+                var h=(FrameworkElement)((Grid)from).Children[0];
+                var start=h.TransformToVisual(Root).TransformPoint(new Windows.Foundation.Point(h.ActualWidth/2,h.ActualHeight/2));
+                var end=to.TransformToVisual(Root).TransformPoint(new Windows.Foundation.Point(h.ActualWidth/2,to.ActualHeight/2+(pass==0?12:-12)));
+                if(!GetWindowRect(hwnd,out var rect))throw new InvalidOperationException("Drag bounds unavailable");
+                double scale=GetDpiForWindow(hwnd)/96d;
+                SetCursorPos(rect.Left+(int)(start.X*scale),rect.Top+(int)(start.Y*scale));mouse_event(2,0,0,0,UIntPtr.Zero);await Task.Delay(120);
+                for(int step=1;step<=12;step++) {SetCursorPos(rect.Left+(int)((start.X+(end.X-start.X)*step/12)*scale),rect.Top+(int)((start.Y+(end.Y-start.Y)*step/12)*scale));await Task.Delay(25);}
+                mouse_event(4,0,0,0,UIntPtr.Zero);await Task.Delay(180);
+                if(settings.TileOrder.Count!=Tiles.Length || settings.TileOrder[pass==0?2:0]!=id)throw new InvalidOperationException("Actual pointer reorder did not move expected row");
+                await SaveImage(Path.Combine(dir,$"reorder-pointer-{pass}.png"));
+            }
+            string saved=System.Text.Json.JsonSerializer.Serialize(settings);var loaded=System.Text.Json.JsonSerializer.Deserialize<AppSettings>(saved)!;
+            if(!loaded.TileOrder.SequenceEqual(settings.TileOrder))throw new InvalidOperationException("Order serialization failed");
+            File.WriteAllText(Path.Combine(dir,"reorder-pointer.txt"),$"PASS actual mouse press/move/release twice; administrator={Startup.IsAdmin()}; order={string.Join(",",settings.TileOrder)}; serialization roundtrip passed\n");
+        } else throw new InvalidOperationException("Reorder rows missing");
+        reorderMode=false;await NavigateAsync("main");
+    }
+
     async Task PresentPreparedAsync()
     {
         // Cloaking keeps DWM composition alive, unlike SW_HIDE. Wait for the XAML
@@ -857,15 +888,26 @@ public sealed partial class MainWindow : Window
 
 
         stack.Children.Add(new TextBlock { Height = 4 });
-        stack.Children.Add(Text(L.T("settings.buttons"), 14, true));
-        var buttons=new ListView { CanDragItems=true,CanReorderItems=true,AllowDrop=true,SelectionMode=ListViewSelectionMode.Single,IsItemClickEnabled=false };
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(buttons,L.Ar ? "ترتيب أزرار الإعدادات السريعة" : "Quick Settings button order");
-        foreach(var tile in OrderedTiles()) {
-            var row=(FrameworkElement)ToggleRow(L.T(tile.LabelKey),settings.IsTileVisible(tile.Id),on=>{settings.SetTileVisible(tile.Id,on);settings.Save();});
-            row.Tag=tile.Id;row.HorizontalAlignment=HorizontalAlignment.Stretch;buttons.Items.Add(row);
+        var buttonHeading=new Grid();buttonHeading.ColumnDefinitions.Add(new ColumnDefinition());buttonHeading.ColumnDefinitions.Add(new ColumnDefinition{Width=GridLength.Auto});
+        buttonHeading.Children.Add(Text(L.T("settings.buttons"),14,true));
+        var reorder=new Button{Content=reorderMode?(L.Ar?"تم":"Done"):(L.Ar?"ترتيب":"Reorder"),Padding=new Thickness(12,4,12,4),HorizontalAlignment=HorizontalAlignment.Right};
+        Grid.SetColumn(reorder,1);buttonHeading.Children.Add(reorder);stack.Children.Add(buttonHeading);
+        var rows=new StackPanel{Spacing=2};reorderRows=rows;
+        void PopulateRows() {
+            rows.Children.Clear();
+            foreach(var tile in OrderedTiles()) {
+                var row=new Grid{MinHeight=40,Tag=tile.Id,Background=new SolidColorBrush(Colors.Transparent)};
+                row.ColumnDefinitions.Add(new ColumnDefinition{Width=GridLength.Auto});row.ColumnDefinitions.Add(new ColumnDefinition());
+                var handle=new Border{Width=32,MinHeight=40,Visibility=reorderMode?Visibility.Visible:Visibility.Collapsed,Background=new SolidColorBrush(Colors.Transparent),Child=new FontIcon{Glyph="\uE700",FontSize=16}};
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(handle,L.Ar?"اسحب لترتيب "+L.T(tile.LabelKey):"Drag to reorder "+L.T(tile.LabelKey));
+                row.Children.Add(handle);
+                var toggleRow=(FrameworkElement)ToggleRow(L.T(tile.LabelKey),settings.IsTileVisible(tile.Id),on=>{settings.SetTileVisible(tile.Id,on);if(!preview)settings.Save();});
+                toggleRow.IsHitTestVisible=!reorderMode;toggleRow.Opacity=reorderMode?.65:1;Grid.SetColumn(toggleRow,1);row.Children.Add(toggleRow);
+                AttachReorderPointer(handle,row,rows);rows.Children.Add(row);
+            }
         }
-        buttons.DragItemsCompleted+=(_,_)=>{settings.TileOrder=buttons.Items.Cast<FrameworkElement>().Select(row=>(string)row.Tag).ToList();settings.Save();};
-        stack.Children.Add(Card(buttons, new Thickness(14, 6, 14, 6)));
+        reorder.Click+=(_,_)=>{if(reordering)return;reorderMode=!reorderMode;reorder.Content=reorderMode?(L.Ar?"تم":"Done"):(L.Ar?"ترتيب":"Reorder");PopulateRows();};
+        PopulateRows();stack.Children.Add(Card(rows,new Thickness(14,6,14,6)));
 
         stack.Children.Add(new TextBlock { Height = 4 });
         stack.Children.Add(Text(L.T("settings.links"), 14, true));
@@ -889,6 +931,36 @@ public sealed partial class MainWindow : Window
         stack.Children.Add(Text(L.Ar ? "بعد 45 ثانية من التشغيل، ثم كل 6 ساعات. التنزيل والتثبيت بقرارك." : "45 seconds after launch, then every 6 hours. Download and install only when you choose.",12,false,SecondaryText));
         stack.Children.Add(UpdateButton());
         return new ScrollViewer { Content = stack, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Padding = new Thickness(0, 0, 12, 0) };
+    }
+
+    void AttachReorderPointer(Border handle,Grid row,StackPanel rows)
+    {
+        bool dragging=false;double startY=0;TranslateTransform? shift=null;
+        void Finish(bool commit) {
+            if(!dragging)return;dragging=false;reordering=false;
+            row.RenderTransform=new TranslateTransform();row.Opacity=1;row.BorderThickness=new Thickness(0);
+            if(commit) {
+                int old=rows.Children.IndexOf(row);double midpoint=startY+(shift?.Y??0)+row.ActualHeight/2;
+                int target=0;foreach(var child in rows.Children.Cast<FrameworkElement>()) {
+                    if(ReferenceEquals(child,row))continue;
+                    double y=child.TransformToVisual(rows).TransformPoint(new Windows.Foundation.Point()).Y;
+                    if(midpoint>y+child.ActualHeight/2)target++;
+                }
+                if(target!=old){rows.Children.Remove(row);rows.Children.Insert(target,row);}
+                settings.TileOrder=rows.Children.Cast<FrameworkElement>().Select(r=>(string)r.Tag).ToList();if(!preview)settings.Save();
+            }
+            handle.ReleasePointerCaptures();
+        }
+        handle.PointerPressed+=(_,e)=>{
+            if(!reorderMode || !e.GetCurrentPoint(handle).Properties.IsLeftButtonPressed)return;
+            dragging=handle.CapturePointer(e.Pointer);if(!dragging)return;reordering=true;
+            startY=row.TransformToVisual(rows).TransformPoint(new Windows.Foundation.Point()).Y;
+            shift=new TranslateTransform();row.RenderTransform=shift;row.Opacity=.8;
+            row.BorderBrush=Primary;row.BorderThickness=new Thickness(1);e.Handled=true;
+        };
+        handle.PointerMoved+=(_,e)=>{if(!dragging)return;double y=e.GetCurrentPoint(rows).Position.Y;shift!.Y=Math.Clamp(y-startY-row.ActualHeight/2,-startY,Math.Max(0,rows.ActualHeight-startY-row.ActualHeight));e.Handled=true;};
+        handle.PointerReleased+=(_,e)=>{Finish(true);e.Handled=true;};
+        handle.PointerCanceled+=(_,_)=>Finish(false);handle.PointerCaptureLost+=(_,_)=>Finish(false);
     }
 
     UIElement ToggleRow(string label, bool isOn, Action<bool> changed)
@@ -1181,6 +1253,7 @@ public sealed partial class MainWindow : Window
             settings.HiddenTiles=Tiles.Skip(5).Select(t=>t.Id).ToList();settings.ShowWarranty=true;
             view="main";Render();await geometryReady;
             var phases=Path.Combine(dir,"interactive-phases.txt");
+            await VerifyPointerReorderAsync(dir);
             await Task.WhenAll(NavigateAsync("settings"),NavigateAsync("battery"),NavigateAsync("about"));
             await NavigateAsync("main");
             HideFlyout();
@@ -1241,6 +1314,8 @@ internal sealed class UpdateNoticeWindow : Window
         if(AppWindow.Presenter is OverlappedPresenter presenter){presenter.SetBorderAndTitleBar(true,false);presenter.IsResizable=false;presenter.IsMaximizable=false;presenter.IsMinimizable=false;presenter.IsAlwaysOnTop=true;}
         double scale=GetScale();AppWindow.ResizeClient(new SizeInt32((int)(370*scale),(int)(230*scale)));AppWindow.IsShownInSwitchers=false;
     }
+    [DllImport("user32.dll")] static extern bool SetCursorPos(int x,int y);
+    [DllImport("user32.dll")] static extern void mouse_event(uint flags,uint dx,uint dy,uint data,UIntPtr extra);
     [DllImport("user32.dll")] static extern uint GetDpiForWindow(IntPtr hwnd);
     double GetScale()=>Math.Max(1,GetDpiForWindow(WinRT.Interop.WindowNative.GetWindowHandle(this))/96d);
     public void ShowNotice(){var work=DisplayArea.Primary.WorkArea;AppWindow.Move(new PointInt32(work.X+work.Width-AppWindow.Size.Width-16,work.Y+work.Height-AppWindow.Size.Height-16));AppWindow.Show();}
