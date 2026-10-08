@@ -1123,6 +1123,8 @@ public sealed partial class MainWindow : Window
             settings.HiddenTiles=Tiles.Skip(5).Select(t=>t.Id).ToList();settings.ShowWarranty=true;
             view="main";Render();await geometryReady;
             var phases=Path.Combine(dir,"interactive-phases.txt");
+            await Task.WhenAll(NavigateAsync("settings"),NavigateAsync("battery"),NavigateAsync("about"));
+            await NavigateAsync("main");
             AppWindow.Hide();
             for(int cycle=0;cycle<3;cycle++) {
                 File.AppendAllText(phases,$"{DateTime.UtcNow:O} open {cycle}\n");
