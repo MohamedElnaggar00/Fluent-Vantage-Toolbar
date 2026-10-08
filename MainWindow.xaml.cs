@@ -952,7 +952,7 @@ public sealed partial class MainWindow : Window
                 int target=0;foreach(var child in rows.Children.Cast<FrameworkElement>()) {
                     if(ReferenceEquals(child,row))continue;
                     double y=child.TransformToVisual(rows).TransformPoint(new Windows.Foundation.Point()).Y;
-                    if(midpoint>y+child.ActualHeight/2)target++;
+                    if(midpoint>y+child.ActualHeight/2+1)target++;
                 }
                 if(target!=old){rows.Children.Remove(row);rows.Children.Insert(target,row);}
                 settings.TileOrder=rows.Children.Cast<FrameworkElement>().Select(r=>(string)r.Tag).ToList();if(!preview)settings.Save();
