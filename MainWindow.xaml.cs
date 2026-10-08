@@ -55,7 +55,7 @@ public sealed partial class MainWindow : Window
         InitializeComponent();
         preview = args.Contains("--capture");
         settings = preview ? new AppSettings { Language = args.Contains("--arabic") ? "ar" : "en", Theme = args.Contains("--dark") ? "dark" : "light" } : AppSettings.Load();
-        L.Ar = settings.Language == "ar";
+        L.Set(settings.Language);
         Title = "Fluent Legion Toolbar";
         SystemBackdrop = new MicaBackdrop();
         ExtendsContentIntoTitleBar = true;
@@ -254,7 +254,7 @@ public sealed partial class MainWindow : Window
 
     void Render()
     {
-        L.Ar = settings.Language == "ar";
+        L.Set(settings.Language);
         ApplyTheme();
         if (tray != null) tray.SetItems(TrayItems());
         titleBar.Children.Clear(); titleBar.ColumnDefinitions.Clear();
@@ -421,9 +421,9 @@ public sealed partial class MainWindow : Window
         var stack = new StackPanel { Spacing = 10 };
         stack.Children.Add(Text(L.T("settings.language"), 14, true));
         var language = new ComboBox { HorizontalAlignment = HorizontalAlignment.Stretch };
-        language.Items.Add("العربية"); language.Items.Add("English");
-        language.SelectedIndex = settings.Language == "ar" ? 0 : 1;
-        language.SelectionChanged += (_, _) => { string chosen = language.SelectedIndex == 0 ? "ar" : "en"; if (chosen == settings.Language) return; settings.Language = chosen; settings.Save(); Render(); };
+        foreach (var lg in Extra.Languages) language.Items.Add(lg.name);
+        language.SelectedIndex = Math.Max(0, Array.FindIndex(Extra.Languages, x => x.code == settings.Language));
+        language.SelectionChanged += (_, _) => { if (language.SelectedIndex < 0) return; string chosen = Extra.Languages[language.SelectedIndex].code; if (chosen == settings.Language) return; settings.Language = chosen; settings.Save(); Render(); };
         stack.Children.Add(language);
 
         stack.Children.Add(new TextBlock { Height = 4 });
@@ -478,6 +478,7 @@ public sealed partial class MainWindow : Window
         var name = Text("Fluent Legion Toolbar", 22, true); name.HorizontalAlignment = HorizontalAlignment.Center; stack.Children.Add(name);
         var version = Text(L.T("about.version") + " " + (typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? "0.2.0"), 13, false, SecondaryText); version.HorizontalAlignment = HorizontalAlignment.Center; stack.Children.Add(version);
         var dev = Text(L.T("about.developer"), 14); dev.HorizontalAlignment = HorizontalAlignment.Center; stack.Children.Add(dev);
+        var contrib = Text(L.T("about.contrib"), 13, false); contrib.HorizontalAlignment = HorizontalAlignment.Center; contrib.TextAlignment = TextAlignment.Center; contrib.TextWrapping = TextWrapping.Wrap; stack.Children.Add(contrib);
         var credit = Text(L.T("about.credit"), 13, false, SecondaryText); credit.HorizontalAlignment = HorizontalAlignment.Center; stack.Children.Add(credit);
         var note = Text(L.T("about.note"), 12, false, SecondaryText); note.TextAlignment = TextAlignment.Center; note.Margin = new Thickness(8, 12, 8, 0); stack.Children.Add(note);
         return stack;

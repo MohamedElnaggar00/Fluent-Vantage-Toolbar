@@ -4,7 +4,7 @@ namespace FluentLegionToolbar;
 
 public sealed class AppSettings
 {
-    public string Language { get; set; } = CultureInfo.CurrentUICulture.TwoLetterISOLanguageName == "ar" ? "ar" : "en";
+    public string Language { get; set; } = "en";
     public string Theme { get; set; } = "system";
     public List<string> HiddenTiles { get; set; } = new();
     public bool ShowWarranty { get; set; } = true;

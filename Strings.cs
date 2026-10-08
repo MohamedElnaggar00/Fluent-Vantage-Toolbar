@@ -3,7 +3,15 @@ namespace FluentLegionToolbar;
 static class L
 {
     public static bool Ar;
-    public static string T(string key) => Table.TryGetValue(key, out var v) ? (Ar ? v.ar : v.en) : key;
+    public static string Code = "en";
+    public static void Set(string code) { Code = Extra.Table.ContainsKey(code) || code == "ar" ? code : "en"; Ar = Code == "ar"; }
+    public static string T(string key)
+    {
+        if (!Table.TryGetValue(key, out var v)) return key;
+        if (Ar) return v.ar;
+        if (Code != "en" && Extra.Table.TryGetValue(Code, out var d) && d.TryGetValue(key, out var s)) return s;
+        return v.en;
+    }
     public static string T(string en, string ar) => Ar ? ar : en;
 
     static readonly Dictionary<string, (string en, string ar)> Table = new()
@@ -18,7 +26,7 @@ static class L
         ["tile.mic"] = ("Mute", "كتم"),
         ["tile.conserve"] = ("Conserve", "حفاظ"),
         ["tile.rapid"] = ("Rapid", "سريع"),
-        ["tile.touchpad"] = ("Touchpad lock", "قفل اللمس"),
+        ["tile.touchpad"] = ("Touchpad", "قفل اللمس"),
         ["tile.refresh"] = ("60 / 144 Hz", "60 / 144 هرتز"),
         ["tile.usb"] = ("Always-on USB", "طاقة USB الدائمة"),
         ["menu.open"] = ("Open", "فتح"),
@@ -39,6 +47,7 @@ static class L
         ["about.title"] = ("About", "حول"),
         ["about.version"] = ("Version", "الإصدار"),
         ["about.developer"] = ("Developer: Mohamed Elnaggar", "المطوّر: محمد النجار"),
+        ["about.contrib"] = ("Contributors: Mohamed Elnaggar (developer), app.instinct (development contributor)", "المساهمون: محمد النجار (المطوّر)، app.instinct (مساهم في التطوير)"),
         ["about.credit"] = ("brought to you by app.instinct AI", "brought to you by app.instinct AI"),
         ["about.note"] = ("Hardware protocols were studied from LenovoLegionToolkit (GPL-3.0). This app is an independent implementation and does not stop Lenovo services.", "دُرست بروتوكولات العتاد من مشروع LenovoLegionToolkit ‏(GPL-3.0). هذا البرنامج تنفيذ مستقل ولا يوقف خدمات Lenovo."),
         ["bat.title"] = ("Battery details", "تفاصيل البطارية"),
