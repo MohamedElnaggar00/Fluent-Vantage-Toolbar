@@ -34,11 +34,15 @@ public sealed partial class MainWindow : Window
     readonly ContentControl body = new() { HorizontalContentAlignment = HorizontalAlignment.Stretch, VerticalContentAlignment = VerticalAlignment.Stretch };
     readonly Dictionary<string, ToggleButton> tileButtons = new();
     DeviceState? current;
+    DeviceDashboardWindow? dashboard;
+    TrayMenuWindow? contextMenu;
     BatteryDetails? batteryDetails;
     WarrantyResult? warranty;
     string? warrantyError;
     bool warrantyLoading;
     bool busy, dialogOpen, exiting;
+    int animationGeneration;
+    Microsoft.UI.Xaml.Media.Animation.Storyboard? flyoutMotion;
     string view = "main";
     DateTime lastHidden = DateTime.MinValue;
     TextBlock? percentText, chargeText, statusText;
@@ -86,10 +90,10 @@ public sealed partial class MainWindow : Window
         }
         ApplyTheme();
 
-        tray = new TrayIcon(hwnd, Path.Combine(AppContext.BaseDirectory, "app.ico"), TrayItems(), () => ShowFlyout(null, true), OnTrayMenu);
+        tray = new TrayIcon(hwnd, Path.Combine(AppContext.BaseDirectory, "app.ico"), TrayItems(), () => ShowFlyout(null, true), OnTrayMenu, OpenTrayContext);
         tray.NativeTip = true; tray.SetTip("Fluent Vantage Toolbar");
         AppWindow.Closing += (_, e) => { if (!exiting && !preview) { e.Cancel = true; HideFlyout(); } };
-        Closed += (_, _) => { timer.Stop(); tray.Dispose(); };
+        Closed += (_, _) => { dashboard?.Close();contextMenu?.Close();timer.Stop(); tray.Dispose(); };
         Activated += (_, e) => { if (e.WindowActivationState == WindowActivationState.Deactivated && !preview && !dialogOpen) HideFlyout(); };
         Root.ActualThemeChanged += (_, _) => { if (!preview) Render(); };
         timer.Tick += async (_, _) => { if (AppWindow.IsVisible && view == "main") await Refresh(); };
@@ -102,6 +106,7 @@ public sealed partial class MainWindow : Window
             timer.Start();
             _ = Refresh();
             ListenForShowRequests();
+            ListenForExitRequests();
             AppWindow.Hide();
         }
     }
@@ -119,11 +124,32 @@ public sealed partial class MainWindow : Window
         catch { }
     }
 
-    void HideFlyout() { if (AppWindow.IsVisible) { lastHidden = DateTime.UtcNow; AppWindow.Hide(); } }
+    async void HideFlyout()
+    {
+        if(!AppWindow.IsVisible)return;
+        int generation=++animationGeneration;lastHidden=DateTime.UtcNow;
+        await AnimateFlyout(false);
+        if(generation==animationGeneration){AppWindow.Hide();Root.Opacity=1;Root.RenderTransform=new TranslateTransform();}
+    }
+    Task AnimateFlyout(bool show)
+    {
+        flyoutMotion?.Stop();
+        if(preview || !new Windows.UI.ViewManagement.UISettings().AnimationsEnabled){Root.Opacity=1;Root.RenderTransform=new TranslateTransform();return Task.CompletedTask;}
+        var transform=new TranslateTransform();Root.RenderTransform=transform;
+        var motion=new Microsoft.UI.Xaml.Media.Animation.Storyboard();flyoutMotion=motion;
+        double time=show?220:170;
+        var easing=new Microsoft.UI.Xaml.Media.Animation.CubicEase{EasingMode=show?Microsoft.UI.Xaml.Media.Animation.EasingMode.EaseOut:Microsoft.UI.Xaml.Media.Animation.EasingMode.EaseIn};
+        var slide=new Microsoft.UI.Xaml.Media.Animation.DoubleAnimation{From=show?42:0,To=show?0:42,Duration=new Duration(TimeSpan.FromMilliseconds(time)),EasingFunction=easing,EnableDependentAnimation=true};
+        var fade=new Microsoft.UI.Xaml.Media.Animation.DoubleAnimation{From=show?0:1,To=show?1:0,Duration=new Duration(TimeSpan.FromMilliseconds(time)),EasingFunction=easing};
+        Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTarget(slide,transform);Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTargetProperty(slide,"Y");
+        Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTarget(fade,Root);Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTargetProperty(fade,"Opacity");motion.Children.Add(slide);motion.Children.Add(fade);motion.Begin();
+        return Task.Delay((int)time);
+    }
 
     void ShowFlyout(string? target, bool toggle)
     {
         if (toggle && (AppWindow.IsVisible || (DateTime.UtcNow - lastHidden).TotalMilliseconds < 350)) { HideFlyout(); return; }
+        ++animationGeneration;
         view = target ?? "main";
         Render();
         if (tray.TryGetAnchor(out int x, out int y))
@@ -141,6 +167,7 @@ public sealed partial class MainWindow : Window
         }
         HideFromTaskbar();
         AppWindow.Show(); Activate(); SetForegroundWindow(hwnd);
+        _ = AnimateFlyout(true);
         PositionTitleBar();
         _ = Refresh();
     }
@@ -157,9 +184,15 @@ public sealed partial class MainWindow : Window
         catch { }
     }
 
-    (int, string)[] TrayItems() => [(1, L.T("menu.open")), (2, L.T("menu.settings")), (3, L.T("menu.about"))];
+    (int, string)[] TrayItems() => [(1, L.T("menu.open")), (2, L.T("menu.settings")), (3, L.T("menu.about")), (4, L.Ar ? "إغلاق التطبيق" : "Close app")];
 
-    void OnTrayMenu(int id) => ShowFlyout(id switch { 2 => "settings", 3 => "about", _ => "main" }, false);
+    void ExitApp(){++animationGeneration;exiting=true;dashboard?.Close();dashboard=null;contextMenu?.Close();contextMenu=null;Close();}
+    void ListenForExitRequests()
+    {
+        try {var signal=new EventWaitHandle(false,EventResetMode.AutoReset,Startup.ExitEventName);var queue=DispatcherQueue.GetForCurrentThread();new Thread(()=>{while(true){signal.WaitOne();queue.TryEnqueue(ExitApp);}}){IsBackground=true}.Start();}catch{}
+    }
+    bool OpenTrayContext(int x,int y){contextMenu?.Close();contextMenu=new TrayMenuWindow(settings.Theme,TrayItems(),OnTrayMenu,x,y);contextMenu.Closed+=(_,_)=>contextMenu=null;contextMenu.Activate();return true;}
+    void OnTrayMenu(int id){if(id==4){ExitApp();return;}ShowFlyout(id switch { 2 => "settings", 3 => "about", _ => "main" }, false);}
 
     public void OpenInitial() => ShowFlyout(null, false);
 
@@ -361,7 +394,7 @@ public sealed partial class MainWindow : Window
         chargeText = Text("", 12, false, SecondaryText);
         stack.Children.Add(chargeText);
 
-        stack.Children.Add(HeaderRow(L.T("quick.header"), L.T("all.settings"), () => OpenUrl("ms-settings:")));
+        stack.Children.Add(HeaderRow(L.T("quick.header"), L.Ar ? "عن جهازك" : "About your device", OpenDashboard));
         var visible = Tiles.Where(t => settings.IsTileVisible(t.Id)).ToList();
         var rows = new StackPanel { Spacing = 14 };
         for (int i = 0; i < visible.Count; i += 5)
@@ -474,6 +507,14 @@ public sealed partial class MainWindow : Window
         if (statusText != null) statusText.Text = preview ? L.T("preview") : value.Problems.Length > 0 ? L.T("status.some") : L.T("status.ok");
     }
 
+    void OpenDashboard()
+    {
+        if(dashboard!=null){dashboard.Activate();return;}
+        dashboard=new DeviceDashboardWindow(settings.Theme,current,preview);
+        dashboard.Closed+=(_,_)=>dashboard=null;
+        dashboard.Activate();
+    }
+
     // ---- settings ----
     UIElement BuildSettings()
     {
@@ -514,7 +555,7 @@ public sealed partial class MainWindow : Window
         logs.Click += (_, _) => OpenUrl(DiagnosticLog.Path);
         stack.Children.Add(logs);
         var exit = new Button { Content = L.T("settings.exit"), HorizontalAlignment = HorizontalAlignment.Stretch, Margin = new Thickness(0, 6, 0, 0) };
-        exit.Click += (_, _) => { exiting = true; Close(); };
+        exit.Click += (_, _) => ExitApp();
         stack.Children.Add(exit);
         return new ScrollViewer { Content = stack, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Padding = new Thickness(0, 0, 12, 0) };
     }
@@ -711,6 +752,10 @@ public sealed partial class MainWindow : Window
             await Task.Delay(1200);
             await SaveImage(Path.Combine(dir, "level" + level + "-" + name));
         }
+        var devicePreview=new DeviceDashboardWindow(settings.Theme,current,true);
+        devicePreview.Activate();
+        await devicePreview.CaptureAsync(Path.Combine(dir,"device-"+name));
+        devicePreview.Close();
         Close();
     }
 }
