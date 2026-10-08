@@ -1,0 +1,58 @@
+name: Clean desktop capture
+on: workflow_dispatch
+permissions:
+  contents: read
+jobs:
+  capture:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - uses: microsoft/setup-msbuild@v2
+      - name: Build capture app
+        shell: pwsh
+        run: |
+          msbuild FluentLegionToolbar.csproj /restore /t:Publish /p:Configuration=Release /p:Platform=x64 /p:RuntimeIdentifier=win-x64 /p:SelfContained=false /p:PublishDir=out/
+          if($LASTEXITCODE -ne 0){throw 'Build failed'}
+          $buildDir=Join-Path $PWD 'bin/x64/Release/net8.0-windows10.0.19041.0/win-x64'
+          Get-ChildItem $buildDir -Recurse -Include *.xbf,*.pri | ForEach-Object {
+            $relative=$_.FullName.Substring($buildDir.Length+1)
+            $destination=Join-Path (Join-Path $PWD 'out') $relative
+            New-Item -ItemType Directory -Force (Split-Path $destination) | Out-Null
+            Copy-Item $_.FullName $destination -Force
+          }
+      - name: Hide consoles and capture desktop
+        shell: pwsh
+        run: |
+          Add-Type -AssemblyName System.Drawing
+          Add-Type -AssemblyName System.Windows.Forms
+          Add-Type @'
+          using System;using System.Runtime.InteropServices;
+          public class CaptureNative {
+            public delegate bool EnumProc(IntPtr h,IntPtr l);
+            [DllImport("user32.dll")] public static extern bool EnumWindows(EnumProc p,IntPtr l);
+            [DllImport("user32.dll",CharSet=CharSet.Unicode)] public static extern int GetClassName(IntPtr h,System.Text.StringBuilder b,int n);
+            [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h,int n);
+          }
+          '@
+          [CaptureNative]::EnumWindows({param($h,$l)
+            $b=New-Object System.Text.StringBuilder 256
+            [void][CaptureNative]::GetClassName($h,$b,256)
+            if($b.ToString() -in @('ConsoleWindowClass','CASCADIA_HOSTING_WINDOW_CLASS')){[void][CaptureNative]::ShowWindow($h,6)}
+            return $true
+          },[IntPtr]::Zero) | Out-Null
+          $p=Start-Process .\out\FluentLegionToolbar.exe -ArgumentList '--capture',"$PWD/main.png",'--dark' -PassThru
+          Start-Sleep -Seconds 2
+          $s=[System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+          $b=New-Object System.Drawing.Bitmap $s.Width,$s.Height
+          $g=[System.Drawing.Graphics]::FromImage($b)
+          $g.CopyFromScreen($s.X,$s.Y,0,0,$b.Size)
+          $b.Save("$PWD/clean-desktop.jpg",[System.Drawing.Imaging.ImageFormat]::Jpeg)
+          $g.Dispose();$b.Dispose()
+          if(-not $p.HasExited){Stop-Process $p.Id -Force}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: clean-desktop
+          path: clean-desktop.jpg
