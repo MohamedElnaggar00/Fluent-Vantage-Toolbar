@@ -326,19 +326,19 @@ public sealed partial class MainWindow : Window
         PositionTitleBar();
         tileButtons.Clear();
         body.Content = view switch { "settings" => BuildSettings(), "about" => BuildAbout(), "battery" => BuildBattery(), "warranty" => BuildWarranty(), "device" => dashboard ??= new DeviceDashboardWindow(settings.Theme,current,preview), _ => BuildMain() };
-        ResizeForContent();
         if (view == "main") Apply();
+        ResizeForContent();
     }
 
     void ResizeForContent()
     {
         // Measure the real main panel, including optional rows and links. Other pages scroll.
         double contentHeight = 520;
-        if (view == "main" && body.Content is ScrollViewer scroll && scroll.Content is FrameworkElement panel) {
+        if (view == "main" && body.Content is FrameworkElement panel) {
             panel.Measure(new Windows.Foundation.Size(472, double.PositiveInfinity));
             contentHeight = Math.Ceiling(panel.DesiredSize.Height);
         }
-        double requested = contentHeight + titleBar.Height + 28 + (view == "main" && settings.ShowWarranty ? 44 : 0);
+        double requested = contentHeight + titleBar.Height + 28 + (view == "main" ? 2 : 0);
         var area = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Nearest).WorkArea;
         double scale = Math.Max(1, GetDpiForWindow(hwnd) / 96d);
         double height = Math.Min(requested, area.Height / scale - 16);
@@ -415,7 +415,7 @@ public sealed partial class MainWindow : Window
             warrantyLink.Click += (_, _) => Navigate("warranty");
             stack.Children.Add(warrantyLink);
         }
-        return new ScrollViewer { Content = stack, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, VerticalScrollMode = ScrollMode.Auto };
+        return stack;
     }
 
     FrameworkElement MakeTile(TileDef tile)
@@ -738,6 +738,14 @@ public sealed partial class MainWindow : Window
             await Task.Delay(1200);
             await SaveImage(Path.Combine(dir, "tiles" + count + "-" + name));
         }
+        // Every tile-row/link combination must fit without a main-page scroll host.
+        foreach(var count in new[]{7,5,0}) foreach(var warrantyVisible in new[]{true,false}) foreach(var detailsVisible in new[]{true,false}) {
+            settings.HiddenTiles=Tiles.Skip(count).Select(t=>t.Id).ToList();settings.ShowWarranty=warrantyVisible;settings.ShowBatteryDetails=detailsVisible;
+            view="main";Render();await Task.Delay(400);
+            if(body.Content is not FrameworkElement main || main.ActualHeight+1<main.DesiredSize.Height)throw new InvalidOperationException("Main panel is clipped for tile/link combination");
+            await SaveImage(Path.Combine(dir,$"main-{count}-warranty{warrantyVisible}-details{detailsVisible}-"+name));
+        }
+        settings.ShowWarranty=true;settings.ShowBatteryDetails=true;
         settings.HiddenTiles.Clear();
         // Low and critical battery colours.
         foreach (var level in new[] { 20, 5 })
