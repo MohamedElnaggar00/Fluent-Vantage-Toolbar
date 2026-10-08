@@ -69,22 +69,30 @@ jobs:
           Add-Type -AssemblyName System.Windows.Forms
           New-Item -ItemType Directory -Force interactive-frames | Out-Null
           $screen=[System.Windows.Forms.Screen]::PrimaryScreen.Bounds
-          $p=Start-Process .\out\FluentLegionToolbar.exe -ArgumentList '--capture',"$PWD/interactive-dark.png",'--dark','--interactive' -PassThru
+          foreach($language in @('english','arabic')) { foreach($theme in @('light','dark')) {
+          $captureDir=Join-Path $PWD "interactive-$language-$theme"
+          New-Item -ItemType Directory -Force $captureDir | Out-Null
+          $framesDir=Join-Path $captureDir 'frames'
+          New-Item -ItemType Directory -Force $framesDir | Out-Null
+          $arguments=@('--capture',"$captureDir/main.png","--$theme",'--interactive')
+          if($language -eq 'arabic') { $arguments += '--arabic' }
+          $p=Start-Process .\out\FluentLegionToolbar.exe -ArgumentList $arguments -PassThru
           $clock=[Diagnostics.Stopwatch]::StartNew()
           $n=0
           while(-not $p.HasExited -and $clock.Elapsed.TotalSeconds -lt 240) {
             $bitmap=New-Object System.Drawing.Bitmap $screen.Width,$screen.Height
             $g=[System.Drawing.Graphics]::FromImage($bitmap)
             $g.CopyFromScreen($screen.X,$screen.Y,0,0,$bitmap.Size)
-            $bitmap.Save((Join-Path $PWD ('interactive-frames/frame-{0:D5}.png' -f $n)),[System.Drawing.Imaging.ImageFormat]::Png)
-            "$n,$($clock.Elapsed.TotalMilliseconds)" | Add-Content interactive-frames/times.csv
+            $bitmap.Save((Join-Path $framesDir ('frame-{0:D5}.png' -f $n)),[System.Drawing.Imaging.ImageFormat]::Png)
+            "$n,$($clock.Elapsed.TotalMilliseconds)" | Add-Content (Join-Path $framesDir times.csv)
             $g.Dispose();$bitmap.Dispose();$n++
             Start-Sleep -Milliseconds 30
             $p.Refresh()
           }
           if(-not $p.HasExited){Stop-Process $p.Id -Force;throw 'Interactive sequence timed out'}
           if($p.ExitCode -ne 0){Get-Content out/launch-error.txt -ErrorAction SilentlyContinue;throw 'Interactive sequence failed'}
-          Get-Content interactive-phases.txt
+          Get-Content (Join-Path $captureDir interactive-phases.txt)
+          }}
       - name: Verify installer shortcuts without startup task
         shell: pwsh
         run: |
@@ -116,3 +124,4 @@ jobs:
             navigation-native-bounds.csv
             installer-shortcuts.txt
             interactive-frames/
+            interactive-*/
