@@ -58,6 +58,9 @@ public sealed partial class MainWindow : Window
     [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")] static extern IntPtr GetWindowLongPtr(IntPtr hwnd, int index);
     [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW")] static extern IntPtr SetWindowLongPtr(IntPtr hwnd, int index, IntPtr value);
 
+    [DllImport("dwmapi.dll")] static extern int DwmSetWindowAttribute(IntPtr hwnd,int attribute,ref uint value,int size);
+    [DllImport("dwmapi.dll")] static extern int DwmFlush();
+    [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr hwnd,IntPtr insertAfter,int x,int y,int cx,int cy,uint flags);
     [DllImport("user32.dll")] static extern bool RedrawWindow(IntPtr hwnd,IntPtr rect,IntPtr region,uint flags);
     [DllImport("user32.dll")] static extern int SetWindowRgn(IntPtr hwnd,IntPtr region,bool redraw);
 
@@ -80,6 +83,11 @@ public sealed partial class MainWindow : Window
         hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         try { AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "app.ico")); } catch { }
         if (AppWindow.Presenter is OverlappedPresenter presenter) { presenter.SetBorderAndTitleBar(false, false); presenter.IsResizable = false; presenter.IsMaximizable = false; presenter.IsMinimizable = false; presenter.IsAlwaysOnTop = true; }
+        // Presenter flag setters may restore WS_BORDER after SetBorderAndTitleBar.
+        var windowStyle=GetWindowLongPtr(hwnd,-16).ToInt64() & ~0x00C40000L;
+        SetWindowLongPtr(hwnd,-16,new IntPtr(windowStyle));
+        SetWindowPos(hwnd,IntPtr.Zero,0,0,0,0,0x0037);
+        uint noBorder=0xFFFFFFFE;DwmSetWindowAttribute(hwnd,34,ref noBorder,4);
         HideFromTaskbar();
         double scale = GetDpiForWindow(hwnd) / 96d;
         AppWindow.ResizeClient(new SizeInt32((int)(520 * scale), (int)(520 * scale)));
@@ -540,10 +548,10 @@ public sealed partial class MainWindow : Window
             int Mix(int a,int b)=>(int)Math.Round(a+(b-a)*eased);
             var rect=new RectInt32(Mix(start.X,target.X),Mix(start.Y,target.Y),Mix(start.Width,target.Width),Mix(start.Height,target.Height));
             if(t>0) {
-                AppWindow.MoveAndResize(rect);nativeResizeCount++;steps++;
+                SetWindowPos(hwnd,IntPtr.Zero,rect.X,rect.Y,rect.Width,rect.Height,0x0104);nativeResizeCount++;steps++;
             }
             Root.UpdateLayout();
-            RedrawWindow(hwnd,IntPtr.Zero,IntPtr.Zero,0x0185);
+            RedrawWindow(hwnd,IntPtr.Zero,IntPtr.Zero,0x0185);DwmFlush();
             canvas.Clip=new RectangleGeometry { Rect=new Windows.Foundation.Rect(0,-96,canvas.ActualWidth,Math.Max(canvas.ActualHeight,Root.ActualHeight)) };
             trace.Add($"{clock.Elapsed.TotalMilliseconds:F1},{rect.X},{rect.Y},{rect.Width},{rect.Height},{rect.Y+rect.Height}");
             if(t>=1)break;
