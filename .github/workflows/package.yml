@@ -1,0 +1,50 @@
+name: Package private distribution
+on: workflow_dispatch
+permissions:
+  contents: read
+jobs:
+  package:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - uses: microsoft/setup-msbuild@v2
+      - name: Publish framework-dependent and self-contained builds
+        shell: pwsh
+        run: |
+          function Publish($dir, $selfContained) {
+            msbuild FluentLegionToolbar.csproj /restore /t:Publish /p:Configuration=Release /p:Platform=x64 /p:RuntimeIdentifier=win-x64 /p:SelfContained=$selfContained /p:PublishDir="$dir/"
+            if($LASTEXITCODE -ne 0) { throw "Build failed: $dir" }
+            $buildDir=Join-Path $PWD 'bin/x64/Release/net8.0-windows10.0.19041.0/win-x64'
+            Get-ChildItem $buildDir -Recurse -Include *.xbf,*.pri | ForEach-Object {
+              $relative=$_.FullName.Substring($buildDir.Length+1)
+              $destination=Join-Path (Join-Path $PWD $dir) $relative
+              New-Item -ItemType Directory -Force (Split-Path $destination) | Out-Null
+              Copy-Item $_.FullName $destination -Force
+            }
+            if(-not(Test-Path "$dir/MainWindow.xbf")) { throw "Compiled XAML missing in $dir" }
+          }
+          Publish 'out-fd' 'false'
+          Remove-Item -Recurse -Force obj, bin
+          Publish 'out-sc' 'true'
+      - name: Portable zip
+        shell: pwsh
+        run: Compress-Archive out-fd/* FluentLegionToolbar-portable-x64.zip
+      - name: Installers (Inno Setup)
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          & $iscc installer.iss /DSourceDir=out-fd /DOutName=FluentLegionToolbar-Setup /DBundled=0
+          if($LASTEXITCODE -ne 0) { throw 'Installer build failed' }
+          & $iscc installer.iss /DSourceDir=out-sc /DOutName=FluentLegionToolbar-Setup-with-dotnet /DBundled=1
+          if($LASTEXITCODE -ne 0) { throw 'Bundled installer build failed' }
+          Get-ChildItem installers | Select-Object Name,Length
+      - uses: actions/upload-artifact@v4
+        with:
+          name: distribution
+          path: |
+            FluentLegionToolbar-portable-x64.zip
+            installers/*.exe
