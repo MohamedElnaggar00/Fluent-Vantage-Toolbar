@@ -48,6 +48,7 @@ public sealed partial class MainWindow : Window
     bool flyoutVisible, showingFlyout, reorderMode, reordering;
     StackPanel? reorderRows;
     int reorderPresses,reorderMoves,reorderReleases;
+    string reorderTrace="";
     int animationGeneration;
     Microsoft.UI.Xaml.Media.Animation.Storyboard? flyoutMotion;
     string view = "main";
@@ -210,7 +211,7 @@ public sealed partial class MainWindow : Window
                 for(int step=1;step<=12;step++) {SetCursorPos(rect.Left+(int)((start.X+(end.X-start.X)*step/12)*scale),rect.Top+(int)((start.Y+(end.Y-start.Y)*step/12)*scale));await Task.Delay(25);}
                 mouse_event(4,0,0,0,UIntPtr.Zero);await Task.Delay(180);
                 await SaveImage(Path.Combine(dir,$"reorder-attempt-{pass}.png"));
-                File.AppendAllText(Path.Combine(dir,"reorder-input.txt"),$"pass={pass}; start={start}; end={end}; rect={rect.Left},{rect.Top}; pressed={reorderPresses}; moved={reorderMoves}; released={reorderReleases}; order={string.Join(",",settings.TileOrder)}\n");
+                File.AppendAllText(Path.Combine(dir,"reorder-input.txt"),$"pass={pass}; start={start}; end={end}; rect={rect.Left},{rect.Top}; pressed={reorderPresses}; moved={reorderMoves}; released={reorderReleases}; order={string.Join(",",settings.TileOrder)}; trace={reorderTrace}\n");
                 if(settings.TileOrder.Count!=Tiles.Length || settings.TileOrder[pass==0?2:0]!=id){Close();throw new InvalidOperationException("Actual pointer reorder did not move expected row");}
                 await SaveImage(Path.Combine(dir,$"reorder-pointer-{pass}.png"));
             }
@@ -904,7 +905,7 @@ public sealed partial class MainWindow : Window
             foreach(var tile in OrderedTiles()) {
                 var row=new Grid{MinHeight=40,Tag=tile.Id,Background=new SolidColorBrush(Colors.Transparent)};
                 row.ColumnDefinitions.Add(new ColumnDefinition{Width=GridLength.Auto});row.ColumnDefinitions.Add(new ColumnDefinition());
-                var handle=new Border{Width=32,MinHeight=40,Visibility=reorderMode?Visibility.Visible:Visibility.Collapsed,Background=new SolidColorBrush(Colors.Transparent),Child=new FontIcon{Glyph="\uE700",FontSize=16}};
+                var handle=new Border{ManipulationMode=Microsoft.UI.Xaml.Input.ManipulationModes.None,Width=32,MinHeight=40,Visibility=reorderMode?Visibility.Visible:Visibility.Collapsed,Background=new SolidColorBrush(Colors.Transparent),Child=new FontIcon{Glyph="\uE700",FontSize=16}};
                 Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(handle,L.Ar?"اسحب لترتيب "+L.T(tile.LabelKey):"Drag to reorder "+L.T(tile.LabelKey));
                 row.Children.Add(handle);
                 var toggleRow=(FrameworkElement)ToggleRow(L.T(tile.LabelKey),settings.IsTileVisible(tile.Id),on=>{settings.SetTileVisible(tile.Id,on);if(!preview)settings.Save();});
@@ -943,7 +944,7 @@ public sealed partial class MainWindow : Window
     {
         bool dragging=false;double startY=0;TranslateTransform? shift=null;
         void Finish(bool commit) {
-            if(!dragging)return;dragging=false;reordering=false;
+            if(!dragging)return;reorderTrace+=$" finish={commit},shift={shift?.Y};";dragging=false;reordering=false;
             row.RenderTransform=new TranslateTransform();row.Opacity=1;row.BorderThickness=new Thickness(0);
             if(commit) {
                 int old=rows.Children.IndexOf(row);double midpoint=startY+(shift?.Y??0)+row.ActualHeight/2;
@@ -958,8 +959,8 @@ public sealed partial class MainWindow : Window
             Root.ReleasePointerCaptures();
         }
         handle.PointerPressed+=(_,e)=>{
-            reorderPresses++;if(!reorderMode || !e.GetCurrentPoint(handle).Properties.IsLeftButtonPressed)return;
-            dragging=Root.CapturePointer(e.Pointer);if(!dragging)return;reordering=true;
+            reorderPresses++;reorderTrace+=$" press:mode={reorderMode},left={e.GetCurrentPoint(handle).Properties.IsLeftButtonPressed};";if(!reorderMode || !e.GetCurrentPoint(handle).Properties.IsLeftButtonPressed)return;
+            dragging=Root.CapturePointer(e.Pointer);reorderTrace+=$" captured={dragging};";if(!dragging)return;reordering=true;
             startY=row.TransformToVisual(rows).TransformPoint(new Windows.Foundation.Point()).Y;
             shift=new TranslateTransform();row.RenderTransform=shift;row.Opacity=.8;
             row.BorderBrush=Primary;row.BorderThickness=new Thickness(1);e.Handled=true;
