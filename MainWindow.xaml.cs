@@ -365,7 +365,7 @@ public sealed partial class MainWindow : Window
         tileButtons.Clear();updateButtons.Clear();
         body.Content = view switch { "settings" => BuildSettings(), "about" => BuildAbout(), "battery" => BuildBattery(), "warranty" => BuildWarranty(), "device" => dashboard ??= new DeviceDashboardWindow(settings.Theme,current,preview), _ => BuildMain() };
         if (view == "main") Apply();
-        if(animatePage){canvas.Opacity=0;canvas.RenderTransform=new TranslateTransform { Y=96 };}
+        if(animatePage){canvas.Opacity=0;canvas.RenderTransform=new TranslateTransform();}
         ResizeForContent(animatePage);
     }
 
