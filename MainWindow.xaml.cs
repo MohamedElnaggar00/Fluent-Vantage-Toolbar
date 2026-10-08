@@ -59,9 +59,13 @@ public sealed partial class MainWindow : Window
     [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW")] static extern IntPtr SetWindowLongPtr(IntPtr hwnd, int index, IntPtr value);
 
     [DllImport("user32.dll")] static extern bool RedrawWindow(IntPtr hwnd,IntPtr rect,IntPtr region,uint flags);
-    [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr h,IntPtr after,int x,int y,int width,int height,uint flags);
-    [DllImport("gdi32.dll")] static extern IntPtr CreateRoundRectRgn(int left,int top,int right,int bottom,int width,int height);
     [DllImport("user32.dll")] static extern int SetWindowRgn(IntPtr hwnd,IntPtr region,bool redraw);
+
+    [StructLayout(LayoutKind.Sequential)] struct NativeRect { public int Left,Top,Right,Bottom; }
+    [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr hwnd,out NativeRect rect);
+    [DllImport("user32.dll")] static extern int GetWindowRgn(IntPtr hwnd,IntPtr region);
+    [DllImport("gdi32.dll")] static extern IntPtr CreateRectRgn(int left,int top,int right,int bottom);
+    [DllImport("gdi32.dll")] static extern bool DeleteObject(IntPtr handle);
 
     public MainWindow(bool startHidden)
     {
@@ -557,6 +561,10 @@ public sealed partial class MainWindow : Window
             File.AppendAllLines(Path.Combine(dir,"navigation-geometry.csv"),new[]{$"PAGE,{view},{start.Height},{target.Height},{steps},{clock.ElapsedMilliseconds}"}.Concat(trace));
             if(start.Height!=target.Height && steps<3)throw new InvalidOperationException("Page size changed without intermediate animation frames");
             if(AppWindow.IsVisible && (AppWindow.Size.Height!=target.Height || AppWindow.Position.Y!=target.Y))throw new InvalidOperationException("Page animation missed its final bounds");
+            if(!GetWindowRect(hwnd,out var actual) || actual.Left!=target.X || actual.Top!=target.Y || actual.Right-actual.Left!=target.Width || actual.Bottom-actual.Top!=target.Height)throw new InvalidOperationException("Native HWND retained larger bounds");
+            var region=CreateRectRgn(0,0,0,0);int regionKind=GetWindowRgn(hwnd,region);DeleteObject(region);
+            if(regionKind!=0 || canvas.Margin.Top!=0 || canvas.Margin.Bottom!=0)throw new InvalidOperationException("Navigation retained region or canvas offset");
+            File.AppendAllText(Path.Combine(dir,"navigation-native-bounds.csv"),$"{view},{actual.Left},{actual.Top},{actual.Right},{actual.Bottom},region={regionKind},offset={canvas.Margin.Top},dpi={GetDpiForWindow(hwnd)}\n");
         }
     }
 
@@ -1148,6 +1156,10 @@ public sealed partial class MainWindow : Window
         foreach(string accent in new[]{"#0078D4","#744DA9"}) {
             settings.AccentColor=accent;view="settings";Render();await geometryReady;await Task.Delay(250);
             await SaveImage(Path.Combine(dir,$"accent-{accent[1..]}-{name}"));
+        }
+        if(body.Content is ScrollViewer settingsScroll) {
+            settingsScroll.ChangeView(null,settingsScroll.ScrollableHeight,null,true);await Task.Delay(250);
+            await SaveImage(Path.Combine(dir,"settings-bottom-"+name));
         }
         settings.AccentColor=null;ApplyAccent();
         if(ParseAccent("#12ABEF") is not {} parsed || parsed.R!=0x12 || ParseAccent("invalid")!=null)throw new InvalidOperationException("Accent parsing failed");
