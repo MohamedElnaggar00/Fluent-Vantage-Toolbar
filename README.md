@@ -55,7 +55,7 @@ It is **not an official Lenovo product**, a fork of Lenovo Vantage, or a replace
 | Mute mic | Mute active Windows microphone capture endpoints |
 | Touchpad | Toggle the supported touchpad-lock route |
 | Fn Lock | A quick Fn Lock control with a readable lock icon |
-| Refresh rate | Use the internal panel's real supported rates, not a fixed 144 Hz assumption |
+| Refresh rate | Enable the panel's high refresh rate, or switch it off to use the lower supported rate |
 | Always-on USB | Toggle the supported always-on USB mode |
 
 **Refresh rate and Always-on USB are hidden by default in v0.3.1.** Enable them in Settings if you want them. Existing saved choices are preserved.
