@@ -332,19 +332,20 @@ public sealed partial class MainWindow : Window
 
     void ResizeForContent()
     {
-        // Measure the real main panel, including optional rows and links. Other pages scroll.
-        double contentHeight = 520;
-        if (view == "main" && body.Content is FrameworkElement panel) {
-            panel.Measure(new Windows.Foundation.Size(472, double.PositiveInfinity));
-            contentHeight = Math.Ceiling(panel.DesiredSize.Height);
-        }
-        double requested = contentHeight + titleBar.Height + 28 + (view == "main" ? 2 : 0);
+        // Realize control templates before measuring. In particular, HyperlinkButton's
+        // theme template has no desired height until it joins the live layout tree.
+        canvas.Height = double.NaN;
+        canvas.RowDefinitions[1].Height = view == "main" ? GridLength.Auto : new GridLength(1, GridUnitType.Star);
+        Root.UpdateLayout();
+        double requested;
+        if (view == "main") {
+            Root.Measure(new Windows.Foundation.Size(520, double.PositiveInfinity));
+            requested = Math.Ceiling(Root.DesiredSize.Height);
+        } else requested = 520 + titleBar.Height + Root.Padding.Top + Root.Padding.Bottom;
         var area = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Nearest).WorkArea;
         double scale = Math.Max(1, GetDpiForWindow(hwnd) / 96d);
         double height = Math.Min(requested, area.Height / scale - 16);
-        canvas.Height = Math.Max(100, height - 28);
-
-        AppWindow.ResizeClient(new SizeInt32((int)(520 * scale), (int)(height * scale)));
+        AppWindow.ResizeClient(new SizeInt32((int)Math.Ceiling(520 * scale), (int)Math.Ceiling(height * scale)));
         if (!preview && tray != null && tray.TryGetAnchor(out int x, out int y)) {
             var work = DisplayArea.GetFromPoint(new PointInt32(x, y), DisplayAreaFallback.Nearest).WorkArea;
             int left = Math.Clamp(x - AppWindow.Size.Width / 2, work.X, Math.Max(work.X, work.X + work.Width - AppWindow.Size.Width));
@@ -742,7 +743,13 @@ public sealed partial class MainWindow : Window
         foreach(var count in new[]{7,5,0}) foreach(var warrantyVisible in new[]{true,false}) foreach(var detailsVisible in new[]{true,false}) {
             settings.HiddenTiles=Tiles.Skip(count).Select(t=>t.Id).ToList();settings.ShowWarranty=warrantyVisible;settings.ShowBatteryDetails=detailsVisible;
             view="main";Render();await Task.Delay(400);
-            if(body.Content is not FrameworkElement main || main.ActualHeight+1<main.DesiredSize.Height)throw new InvalidOperationException("Main panel is clipped for tile/link combination");
+            Root.UpdateLayout();
+            if(body.Content is not StackPanel main)throw new InvalidOperationException("Main page must not scroll");
+            foreach(FrameworkElement child in main.Children) {
+                var bottom=child.TransformToVisual(Root).TransformPoint(new Windows.Foundation.Point(0,child.ActualHeight)).Y;
+                if(bottom>Root.ActualHeight-Root.Padding.Bottom+1 || child.ActualHeight+1<child.DesiredSize.Height)
+                    throw new InvalidOperationException($"Main child clipped: tiles={count}, warranty={warrantyVisible}, details={detailsVisible}, bottom={bottom}, root={Root.ActualHeight}");
+            }
             await SaveImage(Path.Combine(dir,$"main-{count}-warranty{warrantyVisible}-details{detailsVisible}-"+name));
         }
         settings.ShowWarranty=true;settings.ShowBatteryDetails=true;
