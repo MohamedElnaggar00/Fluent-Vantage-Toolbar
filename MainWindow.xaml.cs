@@ -298,14 +298,46 @@ public sealed partial class MainWindow : Window
         return button;
     }
 
-    async void Navigate(string target) { bool visible=AppWindow.IsVisible; view = target; Render(); await geometryReady; if(visible){AppWindow.Show();Activate();} if (target == "battery") _ = LoadBatteryAsync(); if (target == "warranty") _ = LoadWarrantyAsync(false); }
+    bool pageNavigating;
+    Image? outgoingPage;
+    bool MotionEnabled => (!preview || args.Contains("--interactive")) && new Windows.UI.ViewManagement.UISettings().AnimationsEnabled;
 
-    void Render()
+    async void Navigate(string target) => await NavigateAsync(target);
+
+    async Task NavigateAsync(string target)
+    {
+        if(pageNavigating || target==view)return;
+        pageNavigating=true;
+        bool animate=AppWindow.IsVisible && MotionEnabled;
+        try {
+            await geometryReady;
+            if(animate) {
+                // Keep the outgoing page painted while the incoming page is arranged.
+                var snapshot=new Microsoft.UI.Xaml.Media.Imaging.RenderTargetBitmap();
+                await snapshot.RenderAsync(canvas);
+                outgoingPage=new Image { Source=snapshot,Width=canvas.ActualWidth,Height=canvas.ActualHeight,
+                    Stretch=Stretch.Fill,HorizontalAlignment=HorizontalAlignment.Left,VerticalAlignment=VerticalAlignment.Top,IsHitTestVisible=false };
+                Root.Children.Add(outgoingPage);
+            }
+            view=target;
+            Render(animate);
+            await geometryReady;
+            if(target=="battery")_ = LoadBatteryAsync();
+            if(target=="warranty")_ = LoadWarrantyAsync(false);
+        } catch(Exception error) { DiagnosticLog.Write("Page navigation failed: "+error); if(preview)throw; }
+        finally {
+            if(outgoingPage!=null){Root.Children.Remove(outgoingPage);outgoingPage=null;}
+            canvas.Opacity=1;canvas.RenderTransform=new TranslateTransform();Root.Clip=null;
+            pageNavigating=false;
+        }
+    }
+
+    void Render(bool animatePage=false)
     {
         L.Set(settings.Language);
         ApplyTheme();
         // Keep an expanding HWND off screen until its new XAML surface is painted.
-        restoreAfterGeometry=AppWindow.IsVisible && (!preview || args.Contains("--interactive"));
+        restoreAfterGeometry=!animatePage && AppWindow.IsVisible && (!preview || args.Contains("--interactive"));
         if(restoreAfterGeometry)AppWindow.Hide();
         if (tray != null) tray.SetItems(TrayItems());
         titleBar.Children.Clear(); titleBar.ColumnDefinitions.Clear();
@@ -333,7 +365,8 @@ public sealed partial class MainWindow : Window
         tileButtons.Clear();updateButtons.Clear();
         body.Content = view switch { "settings" => BuildSettings(), "about" => BuildAbout(), "battery" => BuildBattery(), "warranty" => BuildWarranty(), "device" => dashboard ??= new DeviceDashboardWindow(settings.Theme,current,preview), _ => BuildMain() };
         if (view == "main") Apply();
-        ResizeForContent();
+        if(animatePage){canvas.Opacity=0;canvas.RenderTransform=new TranslateTransform { Y=96 };}
+        ResizeForContent(animatePage);
     }
 
     bool restoreAfterGeometry;
@@ -343,7 +376,7 @@ public sealed partial class MainWindow : Window
     int nativeResizeCount;
     double frameWidthPixels=double.NaN,frameHeightPixels=double.NaN;
 
-    void ResizeForContent() => geometryReady=FitGeometryAsync(++geometryGeneration);
+    void ResizeForContent(bool animatePage=false) => geometryReady=FitGeometryAsync(++geometryGeneration,animatePage);
 
     static Task NextFrameAsync()
     {
@@ -359,7 +392,7 @@ public sealed partial class MainWindow : Window
         await Task.WhenAny(frame,Task.Delay(34));cleanup();
     }
 
-    async Task FitGeometryAsync(int generation)
+    async Task FitGeometryAsync(int generation,bool animatePage=false)
     {
         await geometryLock.WaitAsync();
         try {
@@ -388,21 +421,73 @@ public sealed partial class MainWindow : Window
             var work=DisplayArea.GetFromWindowId(AppWindow.Id,DisplayAreaFallback.Nearest).WorkArea;
             wanted=Math.Min(wanted,work.Height/scale-16);
             var desired=new SizeInt32((int)Math.Round(520*scale+frameWidthPixels),(int)Math.Round(wanted*scale+frameHeightPixels));
-            // One final outer-size commit; never bounce through ResizeClient first.
-            if(AppWindow.Size.Width!=desired.Width || AppWindow.Size.Height!=desired.Height) {
-                AppWindow.Resize(desired);nativeResizeCount++;
-            }
-            await NextFrameAsync();
-            Root.UpdateLayout();
-            await NextFrameAsync();
-            if(!preview && tray!=null && tray.TryGetAnchor(out int x,out int y)) {
-                var area=DisplayArea.GetFromPoint(new PointInt32(x,y),DisplayAreaFallback.Nearest).WorkArea;
-                int left=Math.Clamp(x-AppWindow.Size.Width/2,area.X,Math.Max(area.X,area.X+area.Width-AppWindow.Size.Width));
-                int top=Math.Clamp(y-AppWindow.Size.Height-16,area.Y,Math.Max(area.Y,area.Y+area.Height-AppWindow.Size.Height));
-                if(AppWindow.Position.X!=left || AppWindow.Position.Y!=top)AppWindow.Move(new PointInt32(left,top));
+            if(animatePage) {
+                // Anchor the bottom edge. One atomic rect update per frame avoids
+                // a resize/move mismatch; the snapshot covers layout preparation.
+                var start=AppWindow.Position;var size=AppWindow.Size;
+                int bottom=start.Y+size.Height;
+                int left=Math.Clamp(start.X+(size.Width-desired.Width)/2,work.X,Math.Max(work.X,work.X+work.Width-desired.Width));
+                int top=Math.Clamp(bottom-desired.Height,work.Y,Math.Max(work.Y,work.Y+work.Height-desired.Height));
+                await AnimatePageGeometryAsync(generation,new RectInt32(left,top,desired.Width,desired.Height));
+            } else {
+                if(AppWindow.Size.Width!=desired.Width || AppWindow.Size.Height!=desired.Height) {
+                    AppWindow.Resize(desired);nativeResizeCount++;
+                }
+                await NextFrameAsync();Root.UpdateLayout();await NextFrameAsync();
+                if(!preview && tray!=null && tray.TryGetAnchor(out int x,out int y)) {
+                    var area=DisplayArea.GetFromPoint(new PointInt32(x,y),DisplayAreaFallback.Nearest).WorkArea;
+                    int left=Math.Clamp(x-AppWindow.Size.Width/2,area.X,Math.Max(area.X,area.X+area.Width-AppWindow.Size.Width));
+                    int top=Math.Clamp(y-AppWindow.Size.Height-16,area.Y,Math.Max(area.Y,area.Y+area.Height-AppWindow.Size.Height));
+                    if(AppWindow.Position.X!=left || AppWindow.Position.Y!=top)AppWindow.Move(new PointInt32(left,top));
+                }
             }
             if(restoreAfterGeometry && generation==geometryGeneration){restoreAfterGeometry=false;AppWindow.Show();}
         } finally {geometryLock.Release();}
+    }
+
+    async Task AnimatePageGeometryAsync(int generation,RectInt32 target)
+    {
+        var position=AppWindow.Position;var size=AppWindow.Size;
+        var start=new RectInt32(position.X,position.Y,size.Width,size.Height);
+        const int duration=300;
+        var transform=new TranslateTransform { Y=96 };canvas.RenderTransform=transform;
+        var motion=new Microsoft.UI.Xaml.Media.Animation.Storyboard();
+        var ease=new Microsoft.UI.Xaml.Media.Animation.CubicEase { EasingMode=Microsoft.UI.Xaml.Media.Animation.EasingMode.EaseOut };
+        void Add(DependencyObject element,string property,double from,double to) {
+            var animation=new Microsoft.UI.Xaml.Media.Animation.DoubleAnimation { From=from,To=to,Duration=new Duration(TimeSpan.FromMilliseconds(duration)),EasingFunction=ease,EnableDependentAnimation=true };
+            Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTarget(animation,element);
+            Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTargetProperty(animation,property);motion.Children.Add(animation);
+        }
+        Add(transform,"Y",96,0);Add(canvas,"Opacity",0,1);
+        if(outgoingPage!=null)Add(outgoingPage,"Opacity",1,0);
+        motion.Begin();
+        var clock=Stopwatch.StartNew();int steps=0;
+        var trace=new List<string>();
+        while(generation==geometryGeneration && AppWindow.IsVisible && !exiting) {
+            double t=Math.Clamp(clock.Elapsed.TotalMilliseconds/duration,0,1);
+            double eased=1-Math.Pow(1-t,3);
+            int Mix(int a,int b)=>(int)Math.Round(a+(b-a)*eased);
+            var rect=new RectInt32(Mix(start.X,target.X),Mix(start.Y,target.Y),Mix(start.Width,target.Width),Mix(start.Height,target.Height));
+            if(AppWindow.Size.Width!=rect.Width || AppWindow.Size.Height!=rect.Height || AppWindow.Position.X!=rect.X || AppWindow.Position.Y!=rect.Y) {
+                AppWindow.MoveAndResize(rect);nativeResizeCount++;steps++;
+            }
+            Root.UpdateLayout();
+            Root.Clip=new RectangleGeometry { Rect=new Windows.Foundation.Rect(0,0,Root.ActualWidth,Root.ActualHeight) };
+            trace.Add($"{clock.Elapsed.TotalMilliseconds:F1},{rect.X},{rect.Y},{rect.Width},{rect.Height},{rect.Y+rect.Height}");
+            if(t>=1)break;
+            await Task.Delay(10);await NextFrameAsync();
+        }
+        if(generation==geometryGeneration && AppWindow.IsVisible) {
+            AppWindow.MoveAndResize(target);Root.UpdateLayout();await NextFrameAsync();
+        }
+        motion.Stop();canvas.Opacity=1;transform.Y=0;
+        DiagnosticLog.Write($"Page motion {view}: {start.Height}->{target.Height}; {steps} atomic geometry steps; {clock.ElapsedMilliseconds}ms; dpi={GetDpiForWindow(hwnd)}");
+        if(preview && args.Contains("--interactive")) {
+            var dir=Path.GetDirectoryName(args[Array.IndexOf(args,"--capture")+1])!;
+            File.AppendAllLines(Path.Combine(dir,"navigation-geometry.csv"),new[]{$"PAGE,{view},{start.Height},{target.Height},{steps},{clock.ElapsedMilliseconds}"}.Concat(trace));
+            if(start.Height!=target.Height && steps<3)throw new InvalidOperationException("Page size changed without intermediate animation frames");
+            if(AppWindow.IsVisible && (AppWindow.Size.Height!=target.Height || AppWindow.Position.Y!=target.Y))throw new InvalidOperationException("Page animation missed its final bounds");
+        }
     }
 
     async Task<double> PaintedHeightAsync(FrameworkElement element)
@@ -926,9 +1011,15 @@ public sealed partial class MainWindow : Window
                 for(int refresh=0;refresh<5;refresh++){Apply();await NextFrameAsync();}
                 if(nativeResizeCount!=before)throw new InvalidOperationException("Unchanged refresh resized the window");
                 File.AppendAllText(phases,$"{DateTime.UtcNow:O} settings {cycle}\n");
-                Navigate("settings");await geometryReady;await Task.Delay(300);
+                await NavigateAsync("settings");await Task.Delay(350);
                 File.AppendAllText(phases,$"{DateTime.UtcNow:O} main {cycle}\n");
-                Navigate("main");await geometryReady;await Task.Delay(300);
+                await NavigateAsync("main");await Task.Delay(350);
+                foreach(string page in new[]{"battery","device","warranty","about"}) {
+                    File.AppendAllText(phases,$"{DateTime.UtcNow:O} {page} {cycle}\n");
+                    await NavigateAsync(page);await Task.Delay(350);
+                    File.AppendAllText(phases,$"{DateTime.UtcNow:O} main-from-{page} {cycle}\n");
+                    await NavigateAsync("main");await Task.Delay(350);
+                }
                 File.AppendAllText(phases,$"{DateTime.UtcNow:O} hide {cycle}\n");
                 HideFlyout();await Task.Delay(250);
             }
