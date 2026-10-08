@@ -369,8 +369,10 @@ public sealed partial class MainWindow : Window
         double delta=wanted-Root.ActualHeight;
         if(Math.Abs(delta)>0.5) {
             double scale=Math.Max(1,GetDpiForWindow(hwnd)/96d);
-            var client=AppWindow.ClientSize;
-            AppWindow.ResizeClient(new SizeInt32(client.Width,Math.Max(100,client.Height+(int)Math.Round(delta*scale))));
+            // ResizeClient adds a hidden caption's height on this custom-caption window.
+            // Apply the observed root delta to the existing outer size instead.
+            var outer=AppWindow.Size;
+            AppWindow.Resize(new SizeInt32(outer.Width,Math.Max(100,outer.Height+(int)Math.Round(delta*scale))));
         }
     }
 
