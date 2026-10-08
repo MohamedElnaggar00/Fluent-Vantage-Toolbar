@@ -9,7 +9,9 @@ public sealed class AppSettings
     public string? AccentColor { get; set; }
     public bool AutoCheckUpdates { get; set; } = true;
     public string? LastNotifiedUpdate { get; set; }
-    public List<string> HiddenTiles { get; set; } = new() { "usb", "refresh" };
+    public bool ThermalDefaultLayoutApplied { get; set; } = true;
+    public List<string> TileOrder { get; set; } = new();
+    public List<string> HiddenTiles { get; set; } = new() { "fn", "usb", "refresh" };
     public bool ShowWarranty { get; set; } = true;
     public bool ShowBatteryDetails { get; set; } = true;
 
@@ -18,7 +20,16 @@ public sealed class AppSettings
 
     public static AppSettings Load()
     {
-        try { if (File.Exists(FilePath)) return JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(FilePath)) ?? new(); } catch { }
+        try { if (File.Exists(FilePath)) {
+            string json=File.ReadAllText(FilePath);var loaded=JsonSerializer.Deserialize<AppSettings>(json) ?? new();
+            using var document=JsonDocument.Parse(json);
+            if(!document.RootElement.TryGetProperty(nameof(ThermalDefaultLayoutApplied),out _)) {
+                loaded.HiddenTiles.Remove("thermal");
+                if(!loaded.HiddenTiles.Contains("fn"))loaded.HiddenTiles.Add("fn");
+                loaded.ThermalDefaultLayoutApplied=true;loaded.Save();
+            }
+            return loaded;
+        }} catch { }
         return new();
     }
 
