@@ -24,9 +24,7 @@ A small Windows 11-style toolbar for Lenovo **Legion** and **LOQ** laptops.
 
 Fluent Vantage Toolbar is an independent replacement for the familiar Lenovo Vantage Toolbar.
 
-> "I decided to build a similar Toolbar since Lenovo took this feature down in favor of the creepy widget. I took the concept from the original one, implemented the Windows 11 design language, and made it customizable a bit"
->
-> - Mohamed Elnaggar, developer
+I built this toolbar after Lenovo removed the original feature in favor of its widget. I kept the concept I liked: battery information and quick controls right by the taskbar. Then I brought it into the Windows 11 design language and added a little customization, so you can choose the controls that matter to you.
 
 ### The original inspiration: Lenovo Vantage Toolbar
 
