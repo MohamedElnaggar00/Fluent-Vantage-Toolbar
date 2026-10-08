@@ -20,19 +20,22 @@ static class DeviceInfo
         }
     }
 
+    internal static bool ValidName(string value) => !string.IsNullOrWhiteSpace(value) && !new[]{"Not", "None", "Unknown", "Default", "To Be Filled", "System Product Name"}.Any(x=>value.Contains(x,StringComparison.OrdinalIgnoreCase));
+
     static (string, string, bool) Read()
     {
-        string name = "Lenovo Legion", type = "", vendor = "";
+        string name = "", model = "", type = "", vendor = "";
         try
         {
             using var s = new ManagementObjectSearcher("SELECT Manufacturer, Model FROM Win32_ComputerSystem"); using var r = s.Get();
-            foreach (ManagementObject o in r) using (o) { vendor = Convert.ToString(o["Manufacturer"]) ?? ""; var m = (Convert.ToString(o["Model"]) ?? "").Trim(); if (m.Length >= 4) type = m[..4]; }
+            foreach (ManagementObject o in r) using (o) { vendor = Convert.ToString(o["Manufacturer"]) ?? ""; var m = (Convert.ToString(o["Model"]) ?? "").Trim(); model=m; if (m.Length >= 4) type = m[..4]; }
         } catch { }
         try
         {
             using var s = new ManagementObjectSearcher("SELECT Version FROM Win32_ComputerSystemProduct"); using var r = s.Get();
-            foreach (ManagementObject o in r) using (o) { var v = (Convert.ToString(o["Version"]) ?? "").Trim(); if (v.Length > 0 && !v.Contains("Not", StringComparison.OrdinalIgnoreCase) && !v.Contains("None", StringComparison.OrdinalIgnoreCase)) name = v; }
+            foreach (ManagementObject o in r) using (o) { var v = (Convert.ToString(o["Version"]) ?? "").Trim(); if (ValidName(v)) name = v; }
         } catch { }
+        if(!ValidName(name))name=ValidName(model)?model:"PC";
         return (name, type, vendor.Contains("LENOVO", StringComparison.OrdinalIgnoreCase));
     }
 }
