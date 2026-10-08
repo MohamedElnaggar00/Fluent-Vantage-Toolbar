@@ -10,7 +10,7 @@ static class L
         string t = v.en;
         if (Ar) t = v.ar;
         else if (Code != "en" && Extra.Table.TryGetValue(Code, out var d) && d.TryGetValue("title", out var s)) t = s;
-        return t.Replace("Legion 5 15ITH6H", Hardware.DeviceInfo.Name);
+        return t.Replace("{device}", Hardware.DeviceInfo.Name);
     }
     public static string T(string key)
     {
@@ -24,7 +24,7 @@ static class L
 
     static readonly Dictionary<string, (string en, string ar)> Table = new()
     {
-        ["title"] = ("My Legion 5 15ITH6H", "جهازي Legion 5 15ITH6H"),
+        ["title"] = ("My {device}", "جهازي {device}"),
         ["battery.header"] = ("MY BATTERY", "البطارية"),
         ["quick.header"] = ("QUICK SETTINGS", "الإعدادات السريعة"),
         ["battery.link"] = ("Battery details", "تفاصيل البطارية"),
