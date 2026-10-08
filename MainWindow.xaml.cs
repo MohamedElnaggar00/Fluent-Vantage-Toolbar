@@ -18,7 +18,7 @@ public sealed partial class MainWindow : Window
     static readonly TileDef[] Tiles =
     [
         new("fn", "tile.fn", ""), new("mic", "tile.mic", "\uE720"), new("conserve", "tile.conserve", "\uEA93"),
-        new("rapid", "tile.rapid", "\uE945"), new("touchpad", "tile.touchpad", "\uE7C9"),
+        new("rapid", "tile.rapid", "\uE945"), new("touchpad", "tile.touchpad", "\uEFA5"),
         new("refresh", "tile.refresh", "\uE7F4"), new("usb", "tile.usb", "\uE88E"),
     ];
 
@@ -37,7 +37,7 @@ public sealed partial class MainWindow : Window
     WarrantyResult? warranty;
     string? warrantyError;
     bool warrantyLoading;
-    bool busy, dialogOpen;
+    bool busy, dialogOpen, exiting;
     string view = "main";
     DateTime lastHidden = DateTime.MinValue;
     TextBlock? percentText, chargeText, statusText;
@@ -65,29 +65,34 @@ public sealed partial class MainWindow : Window
         if (AppWindow.Presenter is OverlappedPresenter presenter) { presenter.IsResizable = false; presenter.IsMaximizable = false; presenter.IsMinimizable = false; presenter.IsAlwaysOnTop = true; }
         HideFromTaskbar();
         double scale = GetDpiForWindow(hwnd) / 96d;
-        AppWindow.Resize(new SizeInt32((int)(520 * scale), (int)(645 * scale)));
+        AppWindow.Resize(new SizeInt32((int)(416 * scale), (int)(456 * scale)));
 
         Root.Padding = new Thickness(24, 8, 24, 20);
         Root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         Root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-        Root.Children.Add(titleBar);
-        Grid.SetRow(body, 1); Root.Children.Add(body);
+        var canvas = new Grid { Width = 472, Height = 542 };
+        canvas.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        canvas.RowDefinitions.Add(new RowDefinition());
+        canvas.Children.Add(titleBar); Grid.SetRow(body, 1); canvas.Children.Add(body);
+        Root.RowDefinitions.Clear(); Root.Padding = new Thickness(19.2, 6.4, 19.2, 16);
+        Root.Children.Add(new Viewbox { Stretch = Stretch.Uniform, HorizontalAlignment = HorizontalAlignment.Stretch, VerticalAlignment = VerticalAlignment.Top, Child = canvas });
         SetTitleBar(titleBar);
         if (preview)
         {
-            Root.Width = 472; Root.Height = 610;
-            AppWindow.Resize(new SizeInt32((int)(580 * scale), (int)(730 * scale)));
+            Root.Width = 416; Root.Height = 456;
+            AppWindow.Resize(new SizeInt32((int)(416 * scale), (int)(456 * scale)));
             Root.Background = new SolidColorBrush(args.Contains("--dark") ? Windows.UI.Color.FromArgb(255, 32, 32, 32) : Windows.UI.Color.FromArgb(255, 243, 243, 243));
         }
         ApplyTheme();
 
         tray = new TrayIcon(hwnd, Path.Combine(AppContext.BaseDirectory, "app.ico"), TrayItems(), () => ShowFlyout(null, true), OnTrayMenu);
         tray.NativeTip = true; tray.SetTip("Fluent Legion Toolbar");
+        AppWindow.Closing += (_, e) => { if (!exiting && !preview) { e.Cancel = true; HideFlyout(); } };
         Closed += (_, _) => { timer.Stop(); tray.Dispose(); };
         Activated += (_, e) => { if (e.WindowActivationState == WindowActivationState.Deactivated && !preview && !dialogOpen) HideFlyout(); };
         Root.ActualThemeChanged += (_, _) => { if (!preview) Render(); };
         timer.Tick += async (_, _) => { if (AppWindow.IsVisible && view == "main") await Refresh(); };
-        Root.Loaded += async (_, _) => { PositionTitleBar(); if (preview) await Capture(); };
+        Root.Loaded += async (_, _) => { PositionTitleBar(); if (preview) await Capture(); else if (!startHidden) ShowFlyout(null, false); };
 
         Render();
         if (!preview)
@@ -95,7 +100,7 @@ public sealed partial class MainWindow : Window
             timer.Start();
             _ = Refresh();
             ListenForShowRequests();
-            if (startHidden) AppWindow.Hide();
+            AppWindow.Hide();
         }
     }
 
@@ -125,6 +130,12 @@ public sealed partial class MainWindow : Window
             int left = Math.Clamp(x - AppWindow.Size.Width / 2, area.X, Math.Max(area.X, area.X + area.Width - AppWindow.Size.Width));
             int top = Math.Clamp(y - AppWindow.Size.Height - 16, area.Y, Math.Max(area.Y, area.Y + area.Height - AppWindow.Size.Height));
             AppWindow.Move(new PointInt32(left, top));
+        }
+        else
+        {
+            var area = DisplayArea.Primary.WorkArea;
+            AppWindow.Move(new PointInt32(area.X + area.Width - AppWindow.Size.Width - 12, area.Y + area.Height - AppWindow.Size.Height - 12));
+            DiagnosticLog.Write("Tray anchor not ready; using taskbar work-area fallback.");
         }
         HideFromTaskbar();
         AppWindow.Show(); Activate(); SetForegroundWindow(hwnd);
@@ -182,7 +193,7 @@ public sealed partial class MainWindow : Window
         busy = true;
         foreach (var button in tileButtons.Values) button.IsEnabled = false;
         try { await action(); current = await device.ReadAsync(); Apply(); }
-        catch (Exception e) { current = await device.ReadAsync(); Apply(); if (statusText != null) statusText.Text = L.T("notconfirmed") + e.Message; }
+        catch (Exception e) { DiagnosticLog.Write("Control failed: " + e); current = await device.ReadAsync(); Apply(); dialogOpen = true; try { await new ContentDialog { XamlRoot = Root.XamlRoot, Title = L.T("notconfirmed"), Content = e.Message + "\n\n" + DiagnosticLog.Path, CloseButtonText = "OK" }.ShowAsync(); } finally { dialogOpen = false; } }
         finally { busy = false; }
     }
 
@@ -337,7 +348,7 @@ public sealed partial class MainWindow : Window
 
         statusText = Text("", 12, false, SecondaryText);
         statusText.MaxHeight = 60;
-        stack.Children.Add(statusText);
+        // Availability details belong in Settings, not the main flyout.
         if (settings.ShowWarranty)
         {
             var warrantyLink = new HyperlinkButton { Content = L.T("warranty.link"), HorizontalAlignment = HorizontalAlignment.Right };
@@ -448,8 +459,14 @@ public sealed partial class MainWindow : Window
         links.Children.Add(ToggleRow(L.T("battery.link"), settings.ShowBatteryDetails, on => { settings.ShowBatteryDetails = on; settings.Save(); }));
         stack.Children.Add(Card(links, new Thickness(14, 6, 14, 6)));
 
+        stack.Children.Add(Text(L.T("status.some"), 12, false, SecondaryText));
+        stack.Children.Add(Text(current?.Problems.Length > 0 ? string.Join("\n", current.Problems) : L.T("status.ok"), 12, false, SecondaryText));
+        stack.Children.Add(Text(DiagnosticLog.Path, 11, false, SecondaryText));
+        var logs = new Button { Content = L.Ar ? "فتح سجل التشخيص" : "Open diagnostic log", HorizontalAlignment = HorizontalAlignment.Stretch };
+        logs.Click += (_, _) => OpenUrl(DiagnosticLog.Path);
+        stack.Children.Add(logs);
         var exit = new Button { Content = L.T("settings.exit"), HorizontalAlignment = HorizontalAlignment.Stretch, Margin = new Thickness(0, 6, 0, 0) };
-        exit.Click += (_, _) => Close();
+        exit.Click += (_, _) => { exiting = true; Close(); };
         stack.Children.Add(exit);
         return new ScrollViewer { Content = stack, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Padding = new Thickness(0, 0, 12, 0) };
     }
