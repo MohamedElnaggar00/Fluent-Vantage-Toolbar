@@ -13,7 +13,7 @@ using Windows.Storage.Streams;
 using Windows.Graphics.Imaging;
 namespace FluentLegionToolbar;
 
-internal sealed class DeviceDashboardWindow : Window
+internal sealed class DeviceDashboardWindow : UserControl
 {
     readonly Grid root=new();
     readonly Grid columns=new();
@@ -36,32 +36,18 @@ internal sealed class DeviceDashboardWindow : Window
     public DeviceDashboardWindow(string theme,DeviceState? state,bool fixture=false)
     {
         this.state=state;this.fixture=fixture;
-        Title=T("About your device","عن جهازك");SystemBackdrop=new MicaBackdrop();
+        string Title=T("About your device","عن جهازك");
         root.RequestedTheme=theme switch{"dark"=>ElementTheme.Dark,"light"=>ElementTheme.Light,_=>ElementTheme.Default};
         root.FlowDirection=L.Ar?FlowDirection.RightToLeft:FlowDirection.LeftToRight;
-        root.Padding=new Thickness(24,18,24,24);root.RowDefinitions.Add(new(){Height=GridLength.Auto});root.RowDefinitions.Add(new());
-        var header=new Grid{Margin=new Thickness(0,0,0,18),ColumnSpacing=16};header.ColumnDefinitions.Add(new());header.ColumnDefinitions.Add(new(){Width=GridLength.Auto});header.Children.Add(Text(Title,26,true));Grid.SetColumn(reload,1);
-        reload.Content=T("Refresh local details","تحديث التفاصيل المحلية");reload.Click+=async(_,_)=>await Load();header.Children.Add(reload);
+        root.Padding=new Thickness(0,0,12,0);root.RowDefinitions.Add(new(){Height=GridLength.Auto});root.RowDefinitions.Add(new());
+        var header=new Grid{Margin=new Thickness(0,0,0,18),ColumnSpacing=16};header.ColumnDefinitions.Add(new());header.ColumnDefinitions.Add(new(){Width=GridLength.Auto});header.Children.Add(Text(Title,20,true));Grid.SetColumn(reload,1);
+        reload.Content=T("Refresh","تحديث");reload.Click+=async(_,_)=>await Load();header.Children.Add(reload);
         root.Children.Add(header);scroll.Content=columns;Grid.SetRow(scroll,1);root.Children.Add(scroll);Content=root;
-        columns.ColumnSpacing=16;for(int i=0;i<3;i++){columns.ColumnDefinitions.Add(new());Grid.SetColumn(lanes[i],i);columns.Children.Add(lanes[i]);}
-        root.SizeChanged+=(_,_)=>Reflow();root.ActualThemeChanged+=(_,_)=>Render();Closed+=(_,_)=>closed=true;
-        var hwnd=WinRT.Interop.WindowNative.GetWindowHandle(this);double scale=GetDpiForWindow(hwnd)/96d;
-        var work=DisplayArea.GetFromWindowId(AppWindow.Id,DisplayAreaFallback.Primary).WorkArea;
-        int width=Math.Min((int)(1180*scale),work.Width-40),height=Math.Min((int)(880*scale),work.Height-48);
-        AppWindow.ResizeClient(new SizeInt32(Math.Max(380,width),Math.Max(360,height)));
-        AppWindow.Move(new PointInt32(work.X+Math.Max(0,(work.Width-AppWindow.Size.Width)/2),work.Y+Math.Max(0,(work.Height-AppWindow.Size.Height)/2)));
-        try{AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory,"app.ico"));}catch{}
+        var stacked=new StackPanel{Spacing=14};foreach(var lane in lanes)stacked.Children.Add(lane);scroll.Content=stacked;
+        root.ActualThemeChanged+=(_,_)=>Render();Unloaded+=(_,_)=>closed=true;Loaded+=(_,_)=>closed=false;
         Render();_ = Load();
     }
-    void Reflow()
-    {
-        int count=root.ActualWidth<700?1:root.ActualWidth<1000?2:3;
-        if(columns.ColumnDefinitions.Count==count)return;
-        columns.ColumnDefinitions.Clear();for(int i=0;i<count;i++)columns.ColumnDefinitions.Add(new());
-        columns.RowDefinitions.Clear();for(int i=0;i<(3+count-1)/count;i++)columns.RowDefinitions.Add(new(){Height=GridLength.Auto});
-        columns.RowSpacing=16;
-        for(int i=0;i<3;i++){Grid.SetColumn(lanes[i],i%count);Grid.SetRow(lanes[i],i/count);}
-    }
+    void Reflow() { }
     async Task Load()
     {
         reload.IsEnabled=false;
@@ -121,7 +107,7 @@ internal sealed class DeviceDashboardWindow : Window
     TextBlock Text(string value,double size=14,bool bold=false)=>new(){Text=value,FontSize=size,FontWeight=bold?Microsoft.UI.Text.FontWeights.SemiBold:Microsoft.UI.Text.FontWeights.Normal,TextWrapping=TextWrapping.Wrap,Foreground=Ink,IsTextSelectionEnabled=true};
     StackPanel Fields(DeviceField[] fields){var p=new StackPanel{Spacing=10};foreach(var f in fields)p.Children.Add(Row(f.Label,f.Value));return p;}
     Grid Row(string name,string value){var g=new Grid{ColumnSpacing=12};g.ColumnDefinitions.Add(new(){Width=new GridLength(0.43,GridUnitType.Star)});g.ColumnDefinitions.Add(new(){Width=new GridLength(0.57,GridUnitType.Star)});var label=Text(name,13);label.Foreground=Muted;g.Children.Add(label);var text=Text(value,14,true);Grid.SetColumn(text,1);g.Children.Add(text);return g;}
-    Border Card(string title,string icon,UIElement content){var p=new StackPanel{Spacing=16};var heading=new StackPanel{Orientation=Orientation.Horizontal,Spacing=12};heading.Children.Add(new FontIcon{Glyph=icon,FontSize=20,Foreground=new SolidColorBrush(Windows.UI.Color.FromArgb(255,90,162,214))});heading.Children.Add(Text(title,19,true));p.Children.Add(heading);p.Children.Add(content);return new(){CornerRadius=new CornerRadius(16),Padding=new Thickness(20),BorderThickness=new Thickness(1),BorderBrush=new SolidColorBrush(Dark?Windows.UI.Color.FromArgb(35,255,255,255):Windows.UI.Color.FromArgb(18,0,0,0)),Background=new SolidColorBrush(Dark?Windows.UI.Color.FromArgb(255,40,43,47):Windows.UI.Color.FromArgb(255,251,251,251)),Child=p};}
+    Border Card(string title,string icon,UIElement content){var p=new StackPanel{Spacing=16};var heading=new StackPanel{Orientation=Orientation.Horizontal,Spacing=12};heading.Children.Add(new FontIcon{Glyph=icon,FontSize=20,Foreground=new SolidColorBrush(Windows.UI.Color.FromArgb(255,90,162,214))});heading.Children.Add(Text(title,20,true));p.Children.Add(heading);p.Children.Add(content);return new(){CornerRadius=new CornerRadius(12),Padding=new Thickness(20),BorderThickness=new Thickness(1),BorderBrush=new SolidColorBrush(Dark?Windows.UI.Color.FromArgb(35,255,255,255):Windows.UI.Color.FromArgb(18,0,0,0)),Background=new SolidColorBrush(Dark?Windows.UI.Color.FromArgb(255,40,43,47):Windows.UI.Color.FromArgb(255,251,251,251)),Child=p};}
     public async Task CaptureAsync(string path){await Task.Delay(1500);var bitmap=new RenderTargetBitmap();await bitmap.RenderAsync(root);var pixels=await bitmap.GetPixelsAsync();var folder=await StorageFolder.GetFolderFromPathAsync(Path.GetDirectoryName(Path.GetFullPath(path))!);var file=await folder.CreateFileAsync(Path.GetFileName(path),CreationCollisionOption.ReplaceExisting);using var stream=await file.OpenAsync(FileAccessMode.ReadWrite);var encoder=await BitmapEncoder.CreateAsync(BitmapEncoder.PngEncoderId,stream);encoder.SetPixelData(BitmapPixelFormat.Bgra8,BitmapAlphaMode.Premultiplied,(uint)bitmap.PixelWidth,(uint)bitmap.PixelHeight,96,96,PixelBytes(pixels));await encoder.FlushAsync();}
     static byte[] PixelBytes(Windows.Storage.Streams.IBuffer buffer){using var reader=DataReader.FromBuffer(buffer);var bytes=new byte[buffer.Length];reader.ReadBytes(bytes);return bytes;}
     static DeviceSnapshot Fixture()=>new("DEMO-SERIAL",[
