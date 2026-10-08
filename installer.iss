@@ -1,14 +1,14 @@
-; Inno Setup script. Build with: iscc installer.iss /DSourceDir=out-fd /DOutName=FluentLegionToolbar-Setup /DBundled=0
+; Inno Setup script. Build with: iscc installer.iss /DSourceDir=out-fd /DOutName=FluentVantageToolbar-Setup /DBundled=0
 #ifndef SourceDir
   #define SourceDir "out"
 #endif
 #ifndef OutName
-  #define OutName "FluentLegionToolbar-Setup"
+  #define OutName "FluentVantageToolbar-Setup"
 #endif
 #ifndef Bundled
   #define Bundled 0
 #endif
-#define AppName "Fluent Legion Toolbar"
+#define AppName "Fluent Vantage Toolbar"
 #define AppVersion "0.2.0"
 
 [Setup]
