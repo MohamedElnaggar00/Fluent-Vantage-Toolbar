@@ -58,7 +58,7 @@ public sealed partial class MainWindow : Window
         if (preview) Hardware.DeviceInfo.Override = "Legion 5 15ITH6H";
         settings = preview ? new AppSettings { Language = args.Contains("--arabic") ? "ar" : "en", Theme = args.Contains("--dark") ? "dark" : "light" } : AppSettings.Load();
         L.Set(settings.Language);
-        Title = "Fluent Legion Toolbar";
+        Title = "Fluent Vantage Toolbar";
         SystemBackdrop = new MicaBackdrop();
         ExtendsContentIntoTitleBar = true;
         hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
@@ -87,7 +87,7 @@ public sealed partial class MainWindow : Window
         ApplyTheme();
 
         tray = new TrayIcon(hwnd, Path.Combine(AppContext.BaseDirectory, "app.ico"), TrayItems(), () => ShowFlyout(null, true), OnTrayMenu);
-        tray.NativeTip = true; tray.SetTip("Fluent Legion Toolbar");
+        tray.NativeTip = true; tray.SetTip("Fluent Vantage Toolbar");
         AppWindow.Closing += (_, e) => { if (!exiting && !preview) { e.Cancel = true; HideFlyout(); } };
         Closed += (_, _) => { timer.Stop(); tray.Dispose(); };
         Activated += (_, e) => { if (e.WindowActivationState == WindowActivationState.Deactivated && !preview && !dialogOpen) HideFlyout(); };
@@ -217,7 +217,10 @@ public sealed partial class MainWindow : Window
         {
             case "fn": await Run(() => device.SetFnAsync(!(c?.FnLocked ?? false))); break;
             case "usb": await Run(() => device.SetUsbAsync(c?.UsbMode != 2)); break;
-            case "refresh": await Run(() => device.SetRefreshAsync(c?.RefreshHz == 144 ? 60 : 144)); break;
+            case "refresh":
+                var rates = c?.AvailableHz?.OrderBy(x => x).ToArray();
+                if (rates is { Length: >= 2 }) await Run(() => device.SetRefreshAsync(c?.RefreshHz == rates[^1] ? rates[0] : rates[^1]));
+                break;
             case "mic": await Run(() => device.SetMicrophoneAsync(!(c?.Muted ?? false))); break;
             case "conserve": await Run(() => device.SetModeAsync(c?.Mode == ChargeMode.Conservation ? ChargeMode.Normal : ChargeMode.Conservation)); break;
             case "rapid": await Run(() => device.SetModeAsync(c?.Mode == ChargeMode.Rapid ? ChargeMode.Normal : ChargeMode.Rapid)); break;
@@ -384,12 +387,12 @@ public sealed partial class MainWindow : Window
     FrameworkElement MakeTile(TileDef tile)
     {
         var button = new ToggleButton { Width = 56, Height = 56, CornerRadius = new CornerRadius(28), HorizontalAlignment = HorizontalAlignment.Center, IsEnabled = false, Padding = new Thickness(0) };
-        button.Resources["ToggleButtonBackgroundChecked"] = Rgb(0, 105, 112);
-        button.Resources["ToggleButtonBackgroundCheckedPointerOver"] = Rgb(0, 119, 126);
-        button.Resources["ToggleButtonBackgroundCheckedPressed"] = Rgb(0, 89, 96);
-        button.Resources["ToggleButtonForegroundChecked"] = Rgb(255, 255, 255);
-        button.Resources["ToggleButtonForegroundCheckedPointerOver"] = Rgb(255, 255, 255);
-        button.Resources["ToggleButtonForegroundCheckedPressed"] = Rgb(255, 255, 255);
+        button.Resources["ToggleButtonBackgroundChecked"] = Rgb(156, 218, 155);
+        button.Resources["ToggleButtonBackgroundCheckedPointerOver"] = Rgb(140, 205, 139);
+        button.Resources["ToggleButtonBackgroundCheckedPressed"] = Rgb(123, 190, 123);
+        button.Resources["ToggleButtonForegroundChecked"] = Rgb(20, 55, 27);
+        button.Resources["ToggleButtonForegroundCheckedPointerOver"] = Rgb(20, 55, 27);
+        button.Resources["ToggleButtonForegroundCheckedPressed"] = Rgb(20, 55, 27);
         if (tile.Id == "fn") button.Content = MakeFnIcon();
         else button.Content = Glyph(tile.Glyph, 24);
         button.Click += (_, _) => OnTile(tile.Id);
@@ -447,9 +450,9 @@ public sealed partial class MainWindow : Window
             if (!tileButtons.TryGetValue(id, out var button)) return;
             button.IsEnabled = supported && !preview;
             button.IsChecked = state ?? false;
-            if (button.Content is FontIcon glyph) glyph.Foreground = state == true ? Rgb(255, 255, 255) : Primary;
+            if (button.Content is FontIcon glyph) glyph.Foreground = state == true ? Rgb(20, 55, 27) : Primary;
             if (id == "fn" && button.Content is Grid lockGrid) foreach (var child in lockGrid.Children) {
-                Brush ink = state == true ? Rgb(255, 255, 255) : Primary;
+                Brush ink = state == true ? Rgb(20, 55, 27) : Primary;
                 if (child is Microsoft.UI.Xaml.Shapes.Path path) path.Stroke = ink;
                 if (child is Border outline) outline.BorderBrush = ink;
                 if (child is TextBlock fnLabel) fnLabel.Foreground = ink;
@@ -459,14 +462,15 @@ public sealed partial class MainWindow : Window
         Set("fn", value.FnLocked, value.FnLocked.HasValue, L.T("tip.fn"));
         if (fnShackle != null) fnShackle.Data = LockShackle(value.FnLocked == true);
         Set("usb", value.UsbMode == 2, value.UsbMode.HasValue, L.T("tip.usb"));
-        bool exactRates = value.AvailableHz?.Contains(60) == true && value.AvailableHz.Contains(144);
-        Set("refresh", value.RefreshHz == 144, exactRates, exactRates ? L.T("tip.refresh.ok") : L.T("tip.refresh.no"));
+        var panelRates = value.AvailableHz?.OrderBy(x => x).ToArray() ?? [];
+        bool exactRates = panelRates.Length >= 2;
+        Set("refresh", exactRates && value.RefreshHz == panelRates[^1], exactRates, exactRates ? L.T("tip.refresh.ok") : L.T("tip.refresh.no"));
         Set("mic", value.Muted, value.Muted.HasValue, L.T("tip.mic"));
         Set("conserve", value.Mode == ChargeMode.Conservation, value.Mode.HasValue, L.T("tip.conserve"));
         Set("rapid", value.Mode == ChargeMode.Rapid, value.Mode.HasValue, L.T("tip.rapid"));
         Set("touchpad", value.TouchpadLocked, value.TouchpadLocked.HasValue, L.T("tip.touchpad"));
         if (tileButtons.TryGetValue("refresh", out var refreshButton) && refreshButton.Parent is StackPanel panel && panel.Children.Count > 1 && panel.Children[1] is TextBlock label)
-            label.Text = value.RefreshHz.HasValue ? $"{value.RefreshHz} Hz" : "-- Hz";
+            label.Text = exactRates ? $"{panelRates[0]} / {panelRates[^1]} Hz" : value.RefreshHz.HasValue ? $"{value.RefreshHz} Hz" : "-- Hz";
         if (statusText != null) statusText.Text = preview ? L.T("preview") : value.Problems.Length > 0 ? L.T("status.some") : L.T("status.ok");
     }
 
@@ -537,7 +541,7 @@ public sealed partial class MainWindow : Window
             stack.Children.Add(new Border { Width = 120, Height = 120, CornerRadius = new CornerRadius(28), Background = Rgb(32, 32, 32), Child = image, HorizontalAlignment = HorizontalAlignment.Center, Padding = new Thickness(12) });
         }
         catch { }
-        var name = Text("Fluent Legion Toolbar", 22, true); name.HorizontalAlignment = HorizontalAlignment.Center; stack.Children.Add(name);
+        var name = Text("Fluent Vantage Toolbar", 22, true); name.HorizontalAlignment = HorizontalAlignment.Center; stack.Children.Add(name);
         var version = Text(L.T("about.version") + " " + (typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? "0.2.0"), 13, false, SecondaryText); version.HorizontalAlignment = HorizontalAlignment.Center; stack.Children.Add(version);
         var dev = Text(L.T("about.developer"), 14); dev.HorizontalAlignment = HorizontalAlignment.Center; stack.Children.Add(dev);
         var contrib = Text(L.T("about.contrib"), 13, false); contrib.HorizontalAlignment = HorizontalAlignment.Center; contrib.TextAlignment = TextAlignment.Center; contrib.TextWrapping = TextWrapping.Wrap; stack.Children.Add(contrib);
@@ -680,7 +684,7 @@ public sealed partial class MainWindow : Window
         // Deterministic render fixture, clearly labelled as preview. Hardware services and the network are never called.
         int index = Array.IndexOf(args, "--capture"); string path = args[index + 1];
         string dir = Path.GetDirectoryName(Path.GetFullPath(path)) ?? ".", name = Path.GetFileName(path);
-        current = new DeviceState(60, true, false, ChargeMode.Conservation, false, false, "Visual fixture", [], false, 2, 144, [60, 144]);
+        current = new DeviceState(60, true, false, ChargeMode.Conservation, false, false, "Visual fixture", [], true, 2, 165, [60, 165]);
         batteryDetails = new BatteryDetails(99.9, 60.0, 59.9, 36, new DateTime(2022, 1, 22), []);
         warranty = new WarrantyResult(new DateTime(2022, 7, 29), new DateTime(2023, 7, 28), null);
         foreach (var target in new[] { "main", "settings", "battery", "warranty", "about" })
