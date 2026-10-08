@@ -3,6 +3,7 @@ using System.Management;
 using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
 using NAudio.CoreAudioApi;
+using Microsoft.Win32;
 namespace FluentLegionToolbar.Hardware;
 // Protocol facts are documented in SOURCES.md. No Lenovo services are stopped or replaced.
 public enum ChargeMode { Normal, Conservation, Rapid }
@@ -15,6 +16,7 @@ public sealed class LegionDevice
     [DllImport("kernel32.dll", SetLastError=true)] static extern bool DeviceIoControl(SafeFileHandle handle, uint code, ref uint input, uint inputLength, out uint output, uint outputLength, out uint returned, IntPtr overlapped);
     [DllImport("kernel32.dll", SetLastError=true)] static extern bool DeviceIoControl(SafeFileHandle handle, uint code, ref uint input, uint inputLength, byte[] output, uint outputLength, out uint returned, IntPtr overlapped);
     readonly SemaphoreSlim gate = new(1);
+    readonly object driverQueue = new();
     /// <summary>Reads one Lenovo battery record (EnergyDrv IOCTL 0x83102138). Offsets: temperature 14, manufacture date 16, first use 18.</summary>
     public static (ushort Temperature, ushort Manufacture, ushort FirstUse)? ReadLenovoBatteryRecord(uint index)
     {
@@ -26,13 +28,17 @@ public sealed class LegionDevice
         return (Read(14), Read(16), Read(18));
     }
     bool targetModel;
+    bool FnInverted => DeviceInfo.FnInverted;
     uint Exchange(uint command, uint ioctl = 0x831020F8)
     {
+        lock (driverQueue) {
         if (!targetModel) throw new InvalidOperationException("This device is not a recognised Lenovo Legion model, so hardware writes are disabled.");
         using var h = CreateFile(@"\\.\EnergyDrv", 3, 3, IntPtr.Zero, 3, 0x80, IntPtr.Zero);
         if (h.IsInvalid) throw new Win32Exception(Marshal.GetLastWin32Error());
         if (!DeviceIoControl(h, ioctl, ref command, 4, out uint response, 4, out uint returned, IntPtr.Zero) || returned < 4) throw new Win32Exception(Marshal.GetLastWin32Error());
-        return response;
+        DiagnosticLog.Write($"EnergyDrv ioctl=0x{ioctl:X} in=0x{command:X} out=0x{response:X}");
+        Thread.Sleep(20); return response;
+        }
     }
     ChargeMode ReadMode()
     {
@@ -40,7 +46,7 @@ public sealed class LegionDevice
         if ((raw & 0x20) != 0) return ChargeMode.Conservation;
         if ((raw & 0x04) != 0) return ChargeMode.Rapid;
         // Toolkit interprets bit 17 after a byte swap as charge mode enabled.
-        if ((raw & 0x200) == 0) throw new InvalidOperationException("Unknown EnergyDrv charging mode; writes are disabled.");
+        // A successful query with neither mode bit is Normal, as documented by LLT.
         return ChargeMode.Normal;
     }
     int Touchpad(string method, int? input = null)
@@ -78,27 +84,30 @@ public sealed class LegionDevice
         if (GetSystemPowerStatus(out var power)) { percent = power.Percent <= 100 ? power.Percent : null; plugged = power.AC == 1; charging = power.Flags != 255 && (power.Flags & 8) != 0; }
         ChargeMode? mode=null; bool? muted=null, locked=null;
         try { mode=ReadMode(); } catch(Exception e) { errors.Add("Battery mode: "+e.Message); }
-        try { if (Touchpad("IsSupportDisableTP") > 0) { int value=Touchpad("GetTPStatus"); if (value is not (0 or 1)) throw new InvalidOperationException("Unknown touchpad state"); locked=value==1; } } catch(Exception e) { errors.Add("Touchpad: "+e.Message); }
+        try { locked = ReadTouchpad(); } catch(Exception e) { errors.Add("Touchpad: "+e.Message); }
         try { muted=ReadMicrophone(); } catch(Exception e) { errors.Add("Microphone: "+e.Message); }
         bool? fn=null;int? usb=null,hz=null;int[] rates=[];
-        try { uint settings=Exchange(2,0x831020E8); fn=(settings&1024)!=0; } catch(Exception e) { errors.Add("Fn Lock: "+e.Message); }
-        try { uint settings=Exchange(2,0x831020E8); usb=(settings&64)!=0&&(settings&16384)!=0?((settings&128)==0?0:(settings&32768)!=0?2:1):null; } catch(Exception e) { errors.Add("USB: "+e.Message); }
+        try { uint settings=Exchange(2,0x831020E8); fn=((settings&1024)!=0) ^ FnInverted; } catch(Exception e) { errors.Add("Fn Lock: "+e.Message); }
+        try { uint settings=Exchange(2,0x831020E8); usb=(settings&128)==0?0:(settings&32768)!=0?2:1; } catch(Exception e) { errors.Add("USB: "+e.Message); }
         try {(hz,rates)=DisplayControl.Read();}catch(Exception e){errors.Add("Display: "+e.Message);}
+        foreach (var error in errors) DiagnosticLog.Write(error);
+        DiagnosticLog.Write($"State model={model} type={DeviceInfo.MachineType} supported={targetModel} fn={fn} micMuted={muted} touchpadLocked={locked} usb={usb} hz={hz} mode={mode}");
         return new DeviceState(percent, plugged, charging, mode, muted, locked, model, errors.ToArray(),fn,usb,hz,rates);
     });
     // Same control path as the reference toolkit: EnergyDrv settings IOCTL, query 2, bit 10 = Fn Lock, set 0xE = on, 0xF = off.
     // No support bit is required first; the query itself succeeding is the capability check. The state is read back with retries.
     public Task SetFnAsync(bool locked) => Task.Run(async () => {
         Exchange(2,0x831020E8);
-        Exchange(locked?14u:15u,0x831020E8);
+        bool hardwareLocked = locked ^ FnInverted;
+        Exchange(hardwareLocked?14u:15u,0x831020E8);
         for(int i=0;i<10;i++) {
             await Task.Delay(100);
-            if(((Exchange(2,0x831020E8)&1024)!=0)==locked) return;
+            if(((Exchange(2,0x831020E8)&1024)!=0)==hardwareLocked) return;
         }
         throw new InvalidOperationException("Fn Lock state was not confirmed.");
     });
     public Task SetUsbAsync(bool enabled) => Task.Run(() => {
-        if((Exchange(2,0x831020E8)&0x4040)!=0x4040)throw new NotSupportedException("Always-on USB battery mode not supported.");
+        Exchange(2,0x831020E8);
         Exchange(enabled?10u:11u,0x831020E8);Exchange(enabled?19u:18u,0x831020E8);
         uint raw=Exchange(2,0x831020E8);int mode=(raw&128)==0?0:(raw&32768)!=0?2:1;
         if(mode!=(enabled?2:0))throw new InvalidOperationException("Always-on USB setting was not confirmed.");
@@ -110,23 +119,75 @@ public sealed class LegionDevice
         try { await Task.Run(async () => {
             var before=ReadMode();
             if (before == next) return;
-            if (before==ChargeMode.Conservation) Exchange(5);
-            else if (before==ChargeMode.Rapid) Exchange(8);
-            if (next==ChargeMode.Conservation) Exchange(3);
-            else if (next==ChargeMode.Rapid) Exchange(7);
+            uint[] commands = next switch { ChargeMode.Conservation => [8u, 3u], ChargeMode.Rapid => [5u, 7u], _ => [5u, 8u] };
+            foreach (var command in commands) Exchange(command);
             for(int i=0;i<10;i++) { await Task.Delay(100); if(ReadMode()==next) return; }
             throw new InvalidOperationException("Firmware did not confirm the requested mode. Lenovo Vantage may be overriding it.");
         }); } finally { gate.Release(); }
     }
-    public Task SetTouchpadAsync(bool locked) => Task.Run(() => {
-        if(Touchpad("IsSupportDisableTP")<=0) throw new InvalidOperationException("Touchpad locking is not supported.");
-        Touchpad("SetTPStatus", locked?1:0);
-        if ((Touchpad("GetTPStatus")==1)!=locked) throw new InvalidOperationException("Touchpad state was not confirmed.");
+    bool PrecisionTouchpadSupported()
+    {
+        try {
+            using var search = new ManagementObjectSearcher(@"root\WMI", "SELECT * FROM LENOVO_UTILITY_DATA");
+            using var rows = search.Get();
+            foreach (ManagementObject row in rows) using (row) {
+                using var input = row.GetMethodParameters("GetIfSupportOrVersion"); input["datatype"] = 0x12;
+                using var result = row.InvokeMethod("GetIfSupportOrVersion", input, null);
+                uint value = Convert.ToUInt32(result["Data"]); DiagnosticLog.Write($"PrecisionTouchpad version=0x{value:X}"); return value >= 0x18;
+            }
+        } catch (Exception e) { DiagnosticLog.Write("PrecisionTouchpad probe: " + e.Message); }
+        return false;
+    }
+    bool ReadTouchpad()
+    {
+        if (PrecisionTouchpadSupported()) {
+            using var key = Registry.CurrentUser.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\PrecisionTouchPad\Status");
+            if (key?.GetValue("Enabled") is int enabled) return enabled == 0;
+            throw new InvalidOperationException("Precision touchpad status is absent for the current Windows user.");
+        }
+        if (Touchpad("IsSupportDisableTP") <= 0) throw new NotSupportedException("No supported touchpad control path.");
+        int value = Touchpad("GetTPStatus");
+        if (value is not (0 or 1)) throw new InvalidOperationException("Unknown touchpad state: " + value);
+        return value == 1;
+    }
+    [StructLayout(LayoutKind.Sequential)] struct KeyInput { public ushort key, scan; public uint flags, time; public UIntPtr extra; }
+    [StructLayout(LayoutKind.Explicit, Size = 40)] struct Input {
+        [FieldOffset(0)] public uint type; [FieldOffset(8)] public KeyInput keyboard;
+    }
+    [DllImport("user32.dll", SetLastError = true)] static extern uint SendInput(uint count, Input[] input, int size);
+    public Task SetTouchpadAsync(bool locked) => Task.Run(async () => {
+        if (ReadTouchpad() == locked) return;
+        if (PrecisionTouchpadSupported()) {
+            ushort[] keys = [0x11, 0x5B, 0x87, 0x87, 0x5B, 0x11];
+            var inputs = keys.Select((key, i) => new Input { type = 1, keyboard = new KeyInput { key = key, flags = i >= 3 ? 2u : 0u } }).ToArray();
+            uint sent = SendInput(6, inputs, Marshal.SizeOf<Input>());
+            DiagnosticLog.Write($"Touchpad Ctrl+Win+F24 sent={sent}/6 error={Marshal.GetLastWin32Error()}");
+            if (sent != 6) throw new Win32Exception(Marshal.GetLastWin32Error());
+        } else Touchpad("SetTPStatus", locked ? 1 : 0);
+        for (int i = 0; i < 10; i++) { await Task.Delay(100); if (ReadTouchpad() == locked) return; }
+        throw new InvalidOperationException("Touchpad state was not confirmed. Check diagnostic.log.");
     });
     public Task SetMicrophoneAsync(bool muted) => Task.Run(() => {
         using var audio=new MMDeviceEnumerator(); var endpoints=audio.EnumerateAudioEndPoints(DataFlow.Capture, NAudio.CoreAudioApi.DeviceState.Active);
         if(endpoints.Count==0) throw new InvalidOperationException("No active microphone.");
-        foreach(var device in endpoints) { using(device) { device.AudioEndpointVolume.Mute=muted; if(device.AudioEndpointVolume.Mute!=muted) throw new InvalidOperationException("Microphone mute was not confirmed."); } }
+        var failures = new List<string>();
+        foreach(var device in endpoints) { using(device) { try {
+            bool before = device.AudioEndpointVolume.Mute;
+            device.AudioEndpointVolume.Mute=muted; bool after = device.AudioEndpointVolume.Mute;
+            DiagnosticLog.Write($"Microphone {device.FriendlyName} id={device.ID} before={before} requested={muted} after={after}");
+            if(after!=muted) failures.Add(device.FriendlyName + ": mute readback mismatch");
+        } catch (Exception e) { failures.Add(device.FriendlyName + ": " + e.Message); } } }
+        if (failures.Count > 0) throw new InvalidOperationException(string.Join("; ", failures));
     });
 }
 
+
+static class DiagnosticLog
+{
+    static readonly object Gate = new();
+    public static string Path => System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "FluentLegionToolbar", "diagnostic.log");
+    public static void Write(string message)
+    {
+        try { lock (Gate) { Directory.CreateDirectory(System.IO.Path.GetDirectoryName(Path)!); if (File.Exists(Path) && new FileInfo(Path).Length > 2_000_000) File.Move(Path, Path + ".old", true); File.AppendAllText(Path, $"{DateTime.Now:O} {message}\n"); } } catch { }
+    }
+}
