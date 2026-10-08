@@ -161,21 +161,8 @@ public sealed partial class MainWindow : Window
 
     public void OpenInitial() => ShowFlyout(null, false);
 
-    void PositionTitleBar()
-    {
-        titleBar.Margin = new Thickness(0); return;
-#pragma warning disable CS0162
-        try
-        {
-            double scale = Math.Max(1, GetDpiForWindow(hwnd) / 96d);
-            double right = AppWindow.TitleBar.RightInset / scale, left = AppWindow.TitleBar.LeftInset / scale;
-            // Keep the title row clear of the native close button; Root already adds 24 of padding.
-            titleBar.Margin = L.Ar ? new Thickness(Math.Max(0, left - 24), 0, 0, 0) : new Thickness(0, 0, Math.Max(0, right - 24), 0);
-        }
-        catch { }
-    }
+    void PositionTitleBar() => titleBar.Margin = new Thickness(0);
 
-#pragma warning restore CS0162
     void ApplyTheme()
     {
         Root.RequestedTheme = settings.Theme switch { "light" => ElementTheme.Light, "dark" => ElementTheme.Dark, _ => ElementTheme.Default };
@@ -380,16 +367,23 @@ public sealed partial class MainWindow : Window
         return panel;
     }
 
-    FontIcon? fnLockIcon;
+    Microsoft.UI.Xaml.Shapes.Path? fnShackle;
     UIElement MakeFnIcon()
     {
-        // Lock glyph with "Fn" inside it; the lock closes when Fn Lock is on and opens when it is off.
-        var grid = new Grid { Width = 34, Height = 34, IsHitTestVisible = false };
-        fnLockIcon = Glyph("\uE785", 30);
-        fnLockIcon.HorizontalAlignment = HorizontalAlignment.Center; fnLockIcon.VerticalAlignment = VerticalAlignment.Center;
-        var text = new TextBlock { Text = "Fn", FontSize = 10, FontWeight = Microsoft.UI.Text.FontWeights.Bold, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 9, 0, 0) };
-        grid.Children.Add(fnLockIcon); grid.Children.Add(text);
+        var grid = new Grid { Width = 34, Height = 36, IsHitTestVisible = false, FlowDirection = FlowDirection.LeftToRight };
+        fnShackle = new Microsoft.UI.Xaml.Shapes.Path { StrokeThickness = 2, Stroke = Primary, Data = LockShackle(false) };
+        grid.Children.Add(fnShackle);
+        grid.Children.Add(new Border { Width = 25, Height = 21, BorderThickness = new Thickness(2), BorderBrush = Primary, CornerRadius = new CornerRadius(3), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Bottom });
+        grid.Children.Add(new TextBlock { Text = "Fn", FontFamily = new FontFamily("Segoe UI"), FontSize = 12, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Foreground = Primary, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 0, 0, 3), TextWrapping = TextWrapping.NoWrap });
         return grid;
+    }
+    static PathGeometry LockShackle(bool locked)
+    {
+        var figure = new PathFigure { StartPoint = new Windows.Foundation.Point(9, 16), IsClosed = false };
+        figure.Segments.Add(new LineSegment { Point = new Windows.Foundation.Point(9, 10) });
+        figure.Segments.Add(new BezierSegment { Point1 = new Windows.Foundation.Point(9, 1), Point2 = new Windows.Foundation.Point(25, 1), Point3 = new Windows.Foundation.Point(25, 10) });
+        if (locked) figure.Segments.Add(new LineSegment { Point = new Windows.Foundation.Point(25, 16) });
+        var geometry = new PathGeometry(); geometry.Figures.Add(figure); return geometry;
     }
 
     void UpdateBatteryFill()
@@ -422,7 +416,7 @@ public sealed partial class MainWindow : Window
             if (tip != null) ToolTipService.SetToolTip(button, tip);
         }
         Set("fn", value.FnLocked, value.FnLocked.HasValue, L.T("tip.fn"));
-        if (fnLockIcon != null) fnLockIcon.Glyph = value.FnLocked == true ? "\uE72E" : "\uE785";
+        if (fnShackle != null) fnShackle.Data = LockShackle(value.FnLocked == true);
         Set("usb", value.UsbMode == 2, value.UsbMode.HasValue, L.T("tip.usb"));
         bool exactRates = value.AvailableHz?.Contains(60) == true && value.AvailableHz.Contains(144);
         Set("refresh", value.RefreshHz == 144, exactRates, exactRates ? L.T("tip.refresh.ok") : L.T("tip.refresh.no"));
