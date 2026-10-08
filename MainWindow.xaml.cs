@@ -73,15 +73,15 @@ public sealed partial class MainWindow : Window
         double scale = GetDpiForWindow(hwnd) / 96d;
         AppWindow.ResizeClient(new SizeInt32((int)(520 * scale), (int)(520 * scale)));
 
-        Root.Padding = new Thickness(24, 8, 24, 20);
+        Root.Padding = new Thickness(24);
         Root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         Root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         canvas = new Grid { Height = 492 };
         canvas.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         canvas.RowDefinitions.Add(new RowDefinition());
         canvas.Children.Add(titleBar); Grid.SetRow(body, 1); canvas.Children.Add(body);
-        Root.RowDefinitions.Clear(); Root.Padding = new Thickness(24, 8, 24, 20);
-        canvas.HorizontalAlignment = HorizontalAlignment.Stretch; Root.Children.Add(canvas);
+        Root.RowDefinitions.Clear(); Root.Padding = new Thickness(24);
+        canvas.HorizontalAlignment = HorizontalAlignment.Stretch; canvas.VerticalAlignment = VerticalAlignment.Top; Root.Children.Add(canvas);
         // Flyout uses a compact custom caption row; the gear and X share one baseline.
         if (preview)
         {
@@ -340,8 +340,8 @@ public sealed partial class MainWindow : Window
         Root.UpdateLayout();
         double requested;
         if (view == "main") {
-            Root.Measure(new Windows.Foundation.Size(520, double.PositiveInfinity));
-            requested = Math.Ceiling(Root.DesiredSize.Height);
+            canvas.Measure(new Windows.Foundation.Size(472, double.PositiveInfinity));
+            requested = Math.Ceiling(canvas.DesiredSize.Height + Root.Padding.Top + Root.Padding.Bottom);
         } else requested = 520 + Math.Max(36,titleBar.ActualHeight) + Root.Padding.Top + Root.Padding.Bottom;
         var area = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Nearest).WorkArea;
         double scale = Math.Max(1, GetDpiForWindow(hwnd) / 96d);
