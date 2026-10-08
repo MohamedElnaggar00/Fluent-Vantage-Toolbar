@@ -539,6 +539,13 @@ public sealed partial class MainWindow : Window
         Add(transform,"Y",96,0);Add(canvas,"Opacity",0,1);
         if(outgoingPage!=null)Add(outgoingPage,"Opacity",1,0);
         canvas.Margin=new Thickness(0);SetWindowRgn(hwnd,IntPtr.Zero,true);
+        int bottom=start.Y+start.Height;
+        var envelope=new RectInt32(target.X,Math.Min(start.Y,target.Y),target.Width,Math.Max(start.Height,target.Height));
+        AppWindow.MoveAndResize(envelope);
+        canvas.Margin=new Thickness(0,start.Y-envelope.Y,0,0);
+        var initialRegion=CreateRectRgn(0,start.Y-envelope.Y,start.Width,bottom-envelope.Y);
+        SetWindowRgn(hwnd,initialRegion,true);
+        await NextFrameAsync();Root.UpdateLayout();await NextFrameAsync();
         motion.Begin();
         var clock=Stopwatch.StartNew();int steps=0;
         var trace=new List<string>();
@@ -548,7 +555,9 @@ public sealed partial class MainWindow : Window
             int Mix(int a,int b)=>(int)Math.Round(a+(b-a)*eased);
             var rect=new RectInt32(Mix(start.X,target.X),Mix(start.Y,target.Y),Mix(start.Width,target.Width),Mix(start.Height,target.Height));
             if(t>0) {
-                SetWindowPos(hwnd,IntPtr.Zero,rect.X,rect.Y,rect.Width,rect.Height,0x0104);nativeResizeCount++;steps++;
+                canvas.Margin=new Thickness(0,(rect.Y-envelope.Y)/(GetDpiForWindow(hwnd)/96d),0,0);
+                var region=CreateRectRgn(0,rect.Y-envelope.Y,rect.Width,rect.Y+rect.Height-envelope.Y);
+                SetWindowRgn(hwnd,region,true);steps++;
             }
             Root.UpdateLayout();
             RedrawWindow(hwnd,IntPtr.Zero,IntPtr.Zero,0x0185);DwmFlush();
@@ -558,7 +567,8 @@ public sealed partial class MainWindow : Window
             await Task.Delay(10);await NextFrameAsync();
         }
         if(generation==geometryGeneration && AppWindow.IsVisible) {
-            AppWindow.MoveAndResize(target);canvas.Margin=new Thickness(0);SetWindowRgn(hwnd,IntPtr.Zero,true);
+            SetWindowPos(hwnd,IntPtr.Zero,target.X,target.Y,target.Width,target.Height,0x0104);nativeResizeCount++;
+            canvas.Margin=new Thickness(0);SetWindowRgn(hwnd,IntPtr.Zero,true);
             Root.UpdateLayout();await NextFrameAsync();
         }
         motion.Stop();canvas.Opacity=1;transform.Y=0;
