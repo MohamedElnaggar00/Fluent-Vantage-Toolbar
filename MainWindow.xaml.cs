@@ -62,7 +62,7 @@ public sealed partial class MainWindow : Window
         ExtendsContentIntoTitleBar = true;
         hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         try { AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "app.ico")); } catch { }
-        if (AppWindow.Presenter is OverlappedPresenter presenter) { presenter.IsResizable = false; presenter.IsMaximizable = false; presenter.IsMinimizable = false; presenter.IsAlwaysOnTop = true; }
+        if (AppWindow.Presenter is OverlappedPresenter presenter) { presenter.SetBorderAndTitleBar(true, false); presenter.IsResizable = false; presenter.IsMaximizable = false; presenter.IsMinimizable = false; presenter.IsAlwaysOnTop = true; }
         HideFromTaskbar();
         double scale = GetDpiForWindow(hwnd) / 96d;
         AppWindow.Resize(new SizeInt32((int)(416 * scale), (int)(456 * scale)));
@@ -76,7 +76,7 @@ public sealed partial class MainWindow : Window
         canvas.Children.Add(titleBar); Grid.SetRow(body, 1); canvas.Children.Add(body);
         Root.RowDefinitions.Clear(); Root.Padding = new Thickness(19.2, 6.4, 19.2, 16);
         Root.Children.Add(new Viewbox { Stretch = Stretch.Uniform, HorizontalAlignment = HorizontalAlignment.Stretch, VerticalAlignment = VerticalAlignment.Top, Child = canvas });
-        SetTitleBar(titleBar);
+        // Flyout uses a compact custom caption row; the gear and X share one baseline.
         if (preview)
         {
             Root.Width = 416; Root.Height = 456;
@@ -92,7 +92,7 @@ public sealed partial class MainWindow : Window
         Activated += (_, e) => { if (e.WindowActivationState == WindowActivationState.Deactivated && !preview && !dialogOpen) HideFlyout(); };
         Root.ActualThemeChanged += (_, _) => { if (!preview) Render(); };
         timer.Tick += async (_, _) => { if (AppWindow.IsVisible && view == "main") await Refresh(); };
-        Root.Loaded += async (_, _) => { PositionTitleBar(); if (preview) await Capture(); else if (!startHidden) ShowFlyout(null, false); };
+        Root.Loaded += async (_, _) => { if (preview) await Capture();  };
 
         Render();
         if (!preview)
@@ -159,8 +159,12 @@ public sealed partial class MainWindow : Window
 
     void OnTrayMenu(int id) => ShowFlyout(id switch { 2 => "settings", 3 => "about", _ => "main" }, false);
 
+    public void OpenInitial() => ShowFlyout(null, false);
+
     void PositionTitleBar()
     {
+        titleBar.Margin = new Thickness(0); return;
+#pragma warning disable CS0162
         try
         {
             double scale = Math.Max(1, GetDpiForWindow(hwnd) / 96d);
@@ -171,6 +175,7 @@ public sealed partial class MainWindow : Window
         catch { }
     }
 
+#pragma warning restore CS0162
     void ApplyTheme()
     {
         Root.RequestedTheme = settings.Theme switch { "light" => ElementTheme.Light, "dark" => ElementTheme.Dark, _ => ElementTheme.Default };
@@ -273,6 +278,7 @@ public sealed partial class MainWindow : Window
         titleBar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         titleBar.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         titleBar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        titleBar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         string titleText = view switch { "settings" => L.T("settings.title"), "about" => L.T("about.title"), "battery" => L.T("bat.title"), "warranty" => L.T("war.title"), _ => L.T("title") };
         if (view != "main")
         {
@@ -287,6 +293,8 @@ public sealed partial class MainWindow : Window
             var gear = IconButton("\uE713", L.T("settings.gear"), () => Navigate("settings"));
             Grid.SetColumn(gear, 2); titleBar.Children.Add(gear);
         }
+        var close = IconButton("\uE8BB", L.Ar ? "إغلاق النافذة" : "Close window", HideFlyout);
+        Grid.SetColumn(close, 3); titleBar.Children.Add(close);
         PositionTitleBar();
         tileButtons.Clear();
         body.Content = view switch { "settings" => BuildSettings(), "about" => BuildAbout(), "battery" => BuildBattery(), "warranty" => BuildWarranty(), _ => BuildMain() };
