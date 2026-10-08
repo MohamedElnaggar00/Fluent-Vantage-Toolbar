@@ -9,7 +9,7 @@ internal static class DashboardIcons {
  string key=title.StartsWith("CPU")||title.StartsWith("Motherboard")?"developer_board":title.StartsWith("GPU")?"games":title.StartsWith("RAM")?"database":title.StartsWith("Storage")||title.StartsWith("Volumes")?"hard_drive":title.StartsWith("Displays")?"desktop":title.StartsWith("Battery")||title.Contains("البطارية")?"battery_charge":title.StartsWith("Network")?"wifi_1":title.Contains("Warranty")||title=="الضمان"?"checkmark_circle":title.StartsWith("Platform")||title.Contains("المنصة")?"info":"laptop";
  var (size,data)=Data(key);
  var host=new Grid {Width=size,Height=size};
- foreach(var path in data){var geometry=(Geometry)XamlReader.Load("<PathGeometry xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' Figures='"+path+"'/>");host.Children.Add(new Microsoft.UI.Xaml.Shapes.Path{Data=geometry,Fill=new SolidColorBrush(Windows.UI.Color.FromArgb(255,90,162,214))});}
+ foreach(var path in data){var shape=(Microsoft.UI.Xaml.Shapes.Path)XamlReader.Load("<Path xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' Data='"+path+"'/>");shape.Fill=new SolidColorBrush(Windows.UI.Color.FromArgb(255,90,162,214));host.Children.Add(shape);}
  return new Viewbox{Width=20,Height=20,Child=host};
  }
  static (int,string[]) Data(string key)=>key switch {
