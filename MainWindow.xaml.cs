@@ -300,6 +300,7 @@ public sealed partial class MainWindow : Window
 
     bool pageNavigating;
     Image? outgoingPage;
+    Brush? navigationBackground;
     bool MotionEnabled => preview ? args.Contains("--interactive") : new Windows.UI.ViewManagement.UISettings().AnimationsEnabled;
 
     async void Navigate(string target) => await NavigateAsync(target);
@@ -312,6 +313,8 @@ public sealed partial class MainWindow : Window
         try {
             await geometryReady;
             if(animate) {
+                navigationBackground=Root.Background;
+                Root.Background=new SolidColorBrush(Dark ? Windows.UI.Color.FromArgb(255,32,32,32) : Windows.UI.Color.FromArgb(255,243,243,243));
                 // Keep the outgoing page painted while the incoming page is arranged.
                 var snapshot=new Microsoft.UI.Xaml.Media.Imaging.RenderTargetBitmap();
                 await snapshot.RenderAsync(canvas);
@@ -327,7 +330,8 @@ public sealed partial class MainWindow : Window
         } catch(Exception error) { DiagnosticLog.Write("Page navigation failed: "+error); if(preview)throw; }
         finally {
             if(outgoingPage!=null){Root.Children.Remove(outgoingPage);outgoingPage=null;}
-            canvas.Opacity=1;canvas.RenderTransform=new TranslateTransform();Root.Clip=null;
+            canvas.Opacity=1;canvas.RenderTransform=new TranslateTransform();canvas.Clip=null;
+            if(animate){await NextFrameAsync();Root.Background=navigationBackground;}
             pageNavigating=false;
         }
     }
@@ -472,7 +476,7 @@ public sealed partial class MainWindow : Window
                 AppWindow.MoveAndResize(rect);nativeResizeCount++;steps++;
             }
             Root.UpdateLayout();
-            Root.Clip=new RectangleGeometry { Rect=new Windows.Foundation.Rect(0,0,Root.ActualWidth,Root.ActualHeight) };
+            canvas.Clip=new RectangleGeometry { Rect=new Windows.Foundation.Rect(0,-96,canvas.ActualWidth,Math.Max(canvas.ActualHeight,Root.ActualHeight)) };
             trace.Add($"{clock.Elapsed.TotalMilliseconds:F1},{rect.X},{rect.Y},{rect.Width},{rect.Height},{rect.Y+rect.Height}");
             if(t>=1)break;
             await Task.Delay(10);await NextFrameAsync();
