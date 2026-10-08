@@ -95,4 +95,5 @@ jobs:
             **/layout-*.txt
             interactive-phases.txt
             navigation-geometry.csv
+            navigation-native-bounds.csv
             interactive-frames/
