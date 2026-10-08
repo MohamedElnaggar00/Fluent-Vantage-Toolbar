@@ -341,33 +341,36 @@ public sealed partial class MainWindow : Window
         double requested;
         if (view == "main") {
             canvas.Measure(new Windows.Foundation.Size(472, double.PositiveInfinity));
-            Root.UpdateLayout();
-            var main=(StackPanel)body.Content;
-            var last=(FrameworkElement)main.Children.Last();
-            var bottom=Root.XamlRoot==null ? canvas.DesiredSize.Height+Root.Padding.Top : last.TransformToVisual(Root).TransformPoint(new Windows.Foundation.Point(0,last.ActualHeight)).Y;
-            requested=Math.Ceiling(bottom+24);
-            DiagnosticLog.Write($"Main margins root={Root.ActualHeight} lastBottom={bottom} requested={requested} dpi={GetDpiForWindow(hwnd)}");
+            requested=Math.Ceiling(canvas.DesiredSize.Height + Root.Padding.Top + Root.Padding.Bottom);
         } else requested = 520 + Math.Max(36,titleBar.ActualHeight) + Root.Padding.Top + Root.Padding.Bottom;
         var area = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Nearest).WorkArea;
         double scale = Math.Max(1, GetDpiForWindow(hwnd) / 96d);
         double height = Math.Min(requested, area.Height / scale - 16);
         AppWindow.ResizeClient(new SizeInt32((int)Math.Ceiling(520 * scale), (int)Math.Ceiling(height * scale)));
-        if(view=="main" && Root.XamlRoot!=null) {
-            Root.UpdateLayout();
-            // WinUI's extended-caption root may differ from the native client area.
-            // Correct against the rendered root rather than assuming those sizes match.
-            var actualDelta=height-Root.ActualHeight;
-            if(Math.Abs(actualDelta)>0.5) {
-                var client=AppWindow.ClientSize;
-                AppWindow.ResizeClient(new SizeInt32(client.Width,client.Height+(int)Math.Round(actualDelta*scale)));
-                Root.UpdateLayout();
-            }
-        }
+        if(view=="main" && Root.XamlRoot!=null)_ = FitMainAfterResizeAsync();
         if (!preview && tray != null && tray.TryGetAnchor(out int x, out int y)) {
             var work = DisplayArea.GetFromPoint(new PointInt32(x, y), DisplayAreaFallback.Nearest).WorkArea;
             int left = Math.Clamp(x - AppWindow.Size.Width / 2, work.X, Math.Max(work.X, work.X + work.Width - AppWindow.Size.Width));
             int top = Math.Clamp(y - AppWindow.Size.Height - 16, work.Y, Math.Max(work.Y, work.Y + work.Height - AppWindow.Size.Height));
             AppWindow.Move(new PointInt32(left, top));
+        }
+    }
+
+    int fitGeneration;
+    async Task FitMainAfterResizeAsync()
+    {
+        int generation=++fitGeneration;
+        await Task.Delay(80);
+        if(generation!=fitGeneration || view!="main" || body.Content is not StackPanel main)return;
+        Root.UpdateLayout();
+        var last=(FrameworkElement)main.Children.Last();
+        var bottom=last.TransformToVisual(Root).TransformPoint(new Windows.Foundation.Point(0,last.ActualHeight)).Y;
+        double wanted=bottom+24;
+        double delta=wanted-Root.ActualHeight;
+        if(Math.Abs(delta)>0.5) {
+            double scale=Math.Max(1,GetDpiForWindow(hwnd)/96d);
+            var client=AppWindow.ClientSize;
+            AppWindow.ResizeClient(new SizeInt32(client.Width,Math.Max(100,client.Height+(int)Math.Round(delta*scale))));
         }
     }
 
