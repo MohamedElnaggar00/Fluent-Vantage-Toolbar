@@ -5,6 +5,7 @@ permissions:
 jobs:
   import:
     runs-on: windows-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -27,10 +28,16 @@ jobs:
 
           foreach($language in @('english','arabic')) {
             foreach($theme in @('light','dark')) {
+              Write-Host "CAPTURE BEGIN $language $theme $(Get-Date -Format o)"
               $arguments=@('--capture',(Join-Path $PWD "$language-$theme.png"),"--$theme")
               if($language -eq 'arabic') { $arguments += '--arabic' }
               $p=Start-Process .\out\FluentLegionToolbar.exe -ArgumentList $arguments -PassThru
-              Start-Sleep -Milliseconds 1800
+              for($attempt=0;$attempt -lt 40;$attempt++) {
+                $p.Refresh()
+                if($p.HasExited) { Get-Content .\out\launch-error.txt -ErrorAction SilentlyContinue; throw "Capture app exited early with $($p.ExitCode)" }
+                if($p.MainWindowHandle -ne 0) { break }
+                Start-Sleep -Milliseconds 250
+              }
               Add-Type -AssemblyName System.Drawing
               if(-not ('WindowCaptureBounds' -as [type])) {
                 Add-Type @'
@@ -50,22 +57,42 @@ jobs:
                 $bitmap.Save((Join-Path $PWD "window-$language-$theme.png"),[System.Drawing.Imaging.ImageFormat]::Png)
                 $graphics.Dispose(); $bitmap.Dispose()
               } else { throw 'Actual window screenshot handle unavailable' }
-              if(-not $p.WaitForExit(90000)) { Stop-Process $p.Id -Force; throw 'Capture timeout' }
-              if($p.ExitCode -ne 0 -or -not (Test-Path "$language-$theme.png")) {
-                Write-Host "Capture exit: $($p.ExitCode)"
-                Get-WinEvent -FilterHashtable @{LogName='Application';StartTime=(Get-Date).AddMinutes(-5)} -ErrorAction SilentlyContinue | Where-Object {$_.ProviderName -in @('.NET Runtime','Application Error','Windows Error Reporting')} | Format-List TimeCreated,ProviderName,Message
-                if(Test-Path out/launch-error.txt) { Get-Content out/launch-error.txt }
-                Compress-Archive out/* Fluent-Legion-toolbar-runtime-dependent.zip
-                throw 'Capture failed'
-              }
+              if(-not $p.WaitForExit(180000)) { Stop-Process $p.Id -Force; throw 'Capture timeout' }
+              if($p.ExitCode -ne 0 -or -not (Test-Path "$language-$theme.png")) { throw 'Capture failed' }
+              Write-Host "CAPTURE END $language $theme $(Get-Date -Format o)"
             }
           }
-          Compress-Archive out/* Fluent-Legion-toolbar-runtime-dependent.zip
+      - name: Capture actual desktop interactive resize sequences
+        shell: pwsh
+        run: |
+          Add-Type -AssemblyName System.Drawing
+          Add-Type -AssemblyName System.Windows.Forms
+          New-Item -ItemType Directory -Force interactive-frames | Out-Null
+          $screen=[System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+          $p=Start-Process .\out\FluentLegionToolbar.exe -ArgumentList '--capture',"$PWD/interactive-dark.png",'--dark','--interactive' -PassThru
+          $clock=[Diagnostics.Stopwatch]::StartNew()
+          $n=0
+          while(-not $p.HasExited -and $clock.Elapsed.TotalSeconds -lt 240) {
+            $bitmap=New-Object System.Drawing.Bitmap $screen.Width,$screen.Height
+            $g=[System.Drawing.Graphics]::FromImage($bitmap)
+            $g.CopyFromScreen($screen.X,$screen.Y,0,0,$bitmap.Size)
+            $bitmap.Save((Join-Path $PWD ('interactive-frames/frame-{0:D5}.png' -f $n)),[System.Drawing.Imaging.ImageFormat]::Png)
+            "$n,$($clock.Elapsed.TotalMilliseconds)" | Add-Content interactive-frames/times.csv
+            $g.Dispose();$bitmap.Dispose();$n++
+            Start-Sleep -Milliseconds 30
+            $p.Refresh()
+          }
+          if(-not $p.HasExited){Stop-Process $p.Id -Force;throw 'Interactive sequence timed out'}
+          if($p.ExitCode -ne 0){Get-Content out/launch-error.txt -ErrorAction SilentlyContinue;throw 'Interactive sequence failed'}
+          Get-Content interactive-phases.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: private-test-build-and-captures
           path: |
-            Fluent-Legion-toolbar-runtime-dependent.zip
-            *-light.png
-            *-dark.png
+            out/
+            *.png
+            **/layout-*.txt
+            interactive-phases.txt
+            navigation-geometry.csv
+            interactive-frames/
