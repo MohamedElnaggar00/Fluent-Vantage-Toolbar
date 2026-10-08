@@ -94,6 +94,29 @@ jobs:
               if($p.ExitCode -ne 0 -or -not (Test-Path "$language-$theme.png")) { throw 'Capture failed' }
             }
           }
+      - name: Capture actual desktop interactive resize sequences
+        shell: pwsh
+        run: |
+          Add-Type -AssemblyName System.Drawing
+          Add-Type -AssemblyName System.Windows.Forms
+          New-Item -ItemType Directory -Force interactive-frames | Out-Null
+          $screen=[System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+          $p=Start-Process .\out-fd\FluentLegionToolbar.exe -ArgumentList '--capture',"$PWD/interactive-dark.png",'--dark','--interactive' -PassThru
+          $clock=[Diagnostics.Stopwatch]::StartNew()
+          $n=0
+          while(-not $p.HasExited -and $clock.Elapsed.TotalSeconds -lt 100) {
+            $bitmap=New-Object System.Drawing.Bitmap $screen.Width,$screen.Height
+            $g=[System.Drawing.Graphics]::FromImage($bitmap)
+            $g.CopyFromScreen($screen.X,$screen.Y,0,0,$bitmap.Size)
+            $bitmap.Save((Join-Path $PWD ('interactive-frames/frame-{0:D5}.png' -f $n)),[System.Drawing.Imaging.ImageFormat]::Png)
+            "$n,$($clock.Elapsed.TotalMilliseconds)" | Add-Content interactive-frames/times.csv
+            $g.Dispose();$bitmap.Dispose();$n++
+            Start-Sleep -Milliseconds 30
+            $p.Refresh()
+          }
+          if(-not $p.HasExited){Stop-Process $p.Id -Force;throw 'Interactive sequence timed out'}
+          if($p.ExitCode -ne 0){Get-Content out-fd/launch-error.txt -ErrorAction SilentlyContinue;throw 'Interactive sequence failed'}
+          Get-Content interactive-phases.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -103,6 +126,8 @@ jobs:
             *-dark.png
             out-fd/launch-error.txt
             layout-*.txt
+            interactive-phases.txt
+            interactive-frames/
       - name: Package (zip + installers)
         shell: pwsh
         run: |
