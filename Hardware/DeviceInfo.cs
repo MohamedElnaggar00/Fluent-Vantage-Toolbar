@@ -5,11 +5,12 @@ namespace FluentLegionToolbar.Hardware;
 /// in LenovoLegionToolkit's compatibility table (used as evidence only); every control is still gated and read back separately.</summary>
 static class DeviceInfo
 {
-    static readonly string[] MachineTypes = { "82JQ", "82N6", "82RB", "82RC", "82RD", "82RE", "82TB", "82TD", "82UH", "82WK", "82WM", "82WQ", "82WR", "82WS", "82Y5", "82Y9", "82YA", "83D6", "83DE", "83DF", "83DG", "83DH", "83E1", "83EF", "83EG", "83EW", "83EX", "83EY", "83F0", "83F1", "83F2", "83F3", "83F5", "83FD", "83G0", "83JJ", "83KY", "83LT", "83LU", "83LY", "83M0", "83N2", "83NN", "83NX", "83Q6", "83Q7", "83RU", "83RW", "83VK" };
+    static readonly string[] MachineTypes = { "82JH", "82JQ", "82N6", "82RB", "82RC", "82RD", "82RE", "82TB", "82TD", "82UH", "82WK", "82WM", "82WQ", "82WR", "82WS", "82Y5", "82Y9", "82YA", "83D6", "83DE", "83DF", "83DG", "83DH", "83E1", "83EF", "83EG", "83EW", "83EX", "83EY", "83F0", "83F1", "83F2", "83F3", "83F5", "83FD", "83G0", "83JJ", "83KY", "83LT", "83LU", "83LY", "83M0", "83N2", "83NN", "83NX", "83Q6", "83Q7", "83RU", "83RW", "83VK" };
     static readonly Lazy<(string name, string machineType, bool lenovo)> Info = new(Read);
     public static string? Override;
     public static string Name => Override ?? Info.Value.name;
     public static string MachineType => Info.Value.machineType;
+    public static bool FnInverted => MachineTypes.Contains(MachineType, StringComparer.OrdinalIgnoreCase) && MachineType != "82JH";
     public static bool IsSupported
     {
         get
