@@ -351,7 +351,12 @@ public sealed partial class MainWindow : Window
         EventHandler<object>? handler=null;
         handler=(_,_)=>{CompositionTarget.Rendering-=handler;done.TrySetResult(true);};
         CompositionTarget.Rendering+=handler;
-        return done.Task;
+        return WaitFrameAsync(done.Task,()=>CompositionTarget.Rendering-=handler);
+    }
+    static async Task WaitFrameAsync(Task frame,Action cleanup)
+    {
+        // Hidden windows can stop compositor ticks. Do not leave geometry blocked.
+        await Task.WhenAny(frame,Task.Delay(34));cleanup();
     }
 
     async Task FitGeometryAsync(int generation)
