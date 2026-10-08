@@ -358,6 +358,12 @@ public sealed partial class MainWindow : Window
     FrameworkElement MakeTile(TileDef tile)
     {
         var button = new ToggleButton { Width = 56, Height = 56, CornerRadius = new CornerRadius(28), HorizontalAlignment = HorizontalAlignment.Center, IsEnabled = false, Padding = new Thickness(0) };
+        button.Resources["ToggleButtonBackgroundChecked"] = Rgb(0, 105, 112);
+        button.Resources["ToggleButtonBackgroundCheckedPointerOver"] = Rgb(0, 119, 126);
+        button.Resources["ToggleButtonBackgroundCheckedPressed"] = Rgb(0, 89, 96);
+        button.Resources["ToggleButtonForegroundChecked"] = Rgb(255, 255, 255);
+        button.Resources["ToggleButtonForegroundCheckedPointerOver"] = Rgb(255, 255, 255);
+        button.Resources["ToggleButtonForegroundCheckedPressed"] = Rgb(255, 255, 255);
         if (tile.Id == "fn") button.Content = MakeFnIcon();
         else button.Content = Glyph(tile.Glyph, 24);
         button.Click += (_, _) => OnTile(tile.Id);
@@ -415,6 +421,13 @@ public sealed partial class MainWindow : Window
             if (!tileButtons.TryGetValue(id, out var button)) return;
             button.IsEnabled = supported && !preview;
             button.IsChecked = state ?? false;
+            if (button.Content is FontIcon glyph) glyph.Foreground = state == true ? Rgb(255, 255, 255) : Primary;
+            if (id == "fn" && button.Content is Grid lockGrid) foreach (var child in lockGrid.Children) {
+                Brush ink = state == true ? Rgb(255, 255, 255) : Primary;
+                if (child is Microsoft.UI.Xaml.Shapes.Path path) path.Stroke = ink;
+                if (child is Border outline) outline.BorderBrush = ink;
+                if (child is TextBlock fnLabel) fnLabel.Foreground = ink;
+            }
             if (tip != null) ToolTipService.SetToolTip(button, tip);
         }
         Set("fn", value.FnLocked, value.FnLocked.HasValue, L.T("tip.fn"));
