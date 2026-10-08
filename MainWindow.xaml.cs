@@ -40,7 +40,8 @@ public sealed partial class MainWindow : Window
     WarrantyResult? warranty;
     string? warrantyError;
     bool warrantyLoading;
-    bool busy, dialogOpen, exiting;
+    bool busy, dialogOpen, exiting, checkingUpdates;
+    readonly List<Button> updateButtons = new();
     int animationGeneration;
     Microsoft.UI.Xaml.Media.Animation.Storyboard? flyoutMotion;
     string view = "main";
@@ -185,7 +186,7 @@ public sealed partial class MainWindow : Window
         catch { }
     }
 
-    (int, string)[] TrayItems() => [(1, L.T("menu.open")), (2, L.T("menu.settings")), (3, L.T("menu.about")), (4, L.Ar ? "إغلاق التطبيق" : "Close app")];
+    (int, string)[] TrayItems() => [(1, L.T("menu.open")), (2, L.T("menu.settings")), (5, UpdateLabel), (3, L.T("menu.about")), (4, L.Ar ? "إغلاق التطبيق" : "Close app")];
 
     void ExitApp(){++animationGeneration;exiting=true;dashboard=null;contextMenu?.Close();contextMenu=null;Close();}
     void ListenForExitRequests()
@@ -193,7 +194,7 @@ public sealed partial class MainWindow : Window
         try {var signal=new EventWaitHandle(false,EventResetMode.AutoReset,Startup.ExitEventName);var queue=DispatcherQueue.GetForCurrentThread();new Thread(()=>{while(true){signal.WaitOne();queue.TryEnqueue(ExitApp);}}){IsBackground=true}.Start();}catch{}
     }
     bool OpenTrayContext(int x,int y){contextMenu?.Close();contextMenu=new TrayMenuWindow(settings.Theme,TrayItems(),OnTrayMenu,x,y);contextMenu.Closed+=(_,_)=>contextMenu=null;contextMenu.Activate();return true;}
-    void OnTrayMenu(int id){if(id==4){ExitApp();return;}ShowFlyout(id switch { 2 => "settings", 3 => "about", _ => "main" }, false);}
+    void OnTrayMenu(int id){if(id==5){ShowFlyout("about",false);_ = CheckForUpdatesAsync();return;}if(id==4){ExitApp();return;}ShowFlyout(id switch { 2 => "settings", 3 => "about", _ => "main" }, false);}
 
     public void OpenInitial() => ShowFlyout(null, false);
 
@@ -210,7 +211,7 @@ public sealed partial class MainWindow : Window
     {
         if (busy || preview) return;
         busy = true;
-        try { current = await device.ReadAsync(); Apply(); }
+        try { current = await device.ReadAsync(); Apply(); if(view=="main")ResizeForContent(); }
         catch (Exception e) { if (statusText != null) statusText.Text = e.Message; }
         finally { busy = false; }
     }
@@ -324,7 +325,7 @@ public sealed partial class MainWindow : Window
         var close = IconButton("\uE8BB", L.Ar ? "إغلاق النافذة" : "Close window", HideFlyout);
         Grid.SetColumn(close, 3); titleBar.Children.Add(close);
         PositionTitleBar();
-        tileButtons.Clear();
+        tileButtons.Clear();updateButtons.Clear();
         body.Content = view switch { "settings" => BuildSettings(), "about" => BuildAbout(), "battery" => BuildBattery(), "warranty" => BuildWarranty(), "device" => dashboard ??= new DeviceDashboardWindow(settings.Theme,current,preview), _ => BuildMain() };
         if (view == "main") Apply();
         ResizeForContent();
@@ -511,6 +512,58 @@ public sealed partial class MainWindow : Window
 
     void OpenDashboard(){dashboard=new DeviceDashboardWindow(settings.Theme,current,preview);Navigate("device");}
 
+    string UpdateLabel => L.Ar ? "التحقق من التحديثات" : "Check for updates";
+    Button UpdateButton()
+    {
+        var button=new Button { Content=checkingUpdates ? (L.Ar ? "جارٍ التحقق..." : "Checking...") : UpdateLabel, IsEnabled=!checkingUpdates, HorizontalAlignment=HorizontalAlignment.Stretch };
+        button.Click+=async (_,_)=>await CheckForUpdatesAsync();updateButtons.Add(button);return button;
+    }
+    static Version? ReleaseVersion(string? tag) => Version.TryParse(tag?.TrimStart('v','V'),out var version) ? version : null;
+    static string? UpdateDownload(System.Text.Json.JsonElement release, Version installed)
+    {
+        if(release.GetProperty("draft").GetBoolean() || release.GetProperty("prerelease").GetBoolean())return null;
+        var next=ReleaseVersion(release.GetProperty("tag_name").GetString());
+        if(next==null || next<=installed)return null;
+        foreach(var asset in release.GetProperty("assets").EnumerateArray()) {
+            var name=asset.GetProperty("name").GetString();
+            if(name!=$"FluentVantageToolbar-{next.ToString(3)}-Setup-with-dotnet.exe")continue;
+            var url=asset.GetProperty("browser_download_url").GetString();
+            if(Uri.TryCreate(url,UriKind.Absolute,out var uri) && uri.Scheme=="https" && uri.Host=="github.com" && uri.AbsolutePath.StartsWith("/MohamedElnaggar00/Fluent-Vantage-Toolbar/releases/download/",StringComparison.Ordinal))return url;
+        }
+        throw new InvalidOperationException("New release has no supported bundled installer.");
+    }
+    async Task CheckForUpdatesAsync()
+    {
+        if(checkingUpdates || preview)return;
+        checkingUpdates=true;
+        foreach(var button in updateButtons){button.IsEnabled=false;button.Content=L.Ar ? "جارٍ التحقق..." : "Checking...";}
+        string message;
+        try {
+            using var http=new System.Net.Http.HttpClient { Timeout=TimeSpan.FromSeconds(20) };
+            http.DefaultRequestHeaders.UserAgent.ParseAdd("FluentVantageToolbar/"+(typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? "0.0.0"));
+            http.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
+            using var response=await http.GetAsync("https://api.github.com/repos/MohamedElnaggar00/Fluent-Vantage-Toolbar/releases/latest");
+            response.EnsureSuccessStatusCode();
+            using var json=System.Text.Json.JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            var installed=ReleaseVersion(typeof(MainWindow).Assembly.GetName().Version?.ToString(3)) ?? new Version(0,0,0);
+            var url=UpdateDownload(json.RootElement,installed);
+            if(url==null)message=L.Ar ? "أنت تستخدم أحدث إصدار." : "You're using the latest release.";
+            else {
+                Process.Start(new ProcessStartInfo(url){UseShellExecute=true});
+                message=L.Ar ? "تم فتح رابط تنزيل التحديث في المتصفح. بعد اكتمال التنزيل، شغّل المثبّت للتحديث." : "Opened the update download in your browser. When the download finishes, run the installer to update.";
+            }
+        } catch(Exception error) {
+            DiagnosticLog.Write("Update check failed: "+error.Message);
+            message=L.Ar ? "تعذّر التحقق من التحديثات أو فتح التنزيل. تحقق من اتصال الإنترنت وحاول مجدداً." : "Couldn't check for updates or open the download. Check your internet connection and try again.";
+        } finally {
+            checkingUpdates=false;foreach(var button in updateButtons){button.IsEnabled=true;button.Content=UpdateLabel;}
+        }
+        if(exiting)return;
+        dialogOpen=true;
+        try { await new ContentDialog { XamlRoot=Root.XamlRoot,Title=UpdateLabel,Content=message,CloseButtonText=L.Ar ? "إغلاق" : "Close" }.ShowAsync(); }
+        finally {dialogOpen=false;}
+    }
+
     // ---- settings ----
     UIElement BuildSettings()
     {
@@ -550,6 +603,7 @@ public sealed partial class MainWindow : Window
         var logs = new Button { Content = L.Ar ? "فتح سجل التشخيص" : "Open diagnostic log", HorizontalAlignment = HorizontalAlignment.Stretch };
         logs.Click += (_, _) => OpenUrl(DiagnosticLog.Path);
         stack.Children.Add(logs);
+        stack.Children.Add(UpdateButton());
         var exit = new Button { Content = L.T("settings.exit"), HorizontalAlignment = HorizontalAlignment.Stretch, Margin = new Thickness(0, 6, 0, 0) };
         exit.Click += (_, _) => ExitApp();
         stack.Children.Add(exit);
@@ -584,7 +638,8 @@ public sealed partial class MainWindow : Window
         var contrib = Text(L.T("about.contrib"), 13, false); contrib.HorizontalAlignment = HorizontalAlignment.Center; contrib.TextAlignment = TextAlignment.Center; contrib.TextWrapping = TextWrapping.Wrap; stack.Children.Add(contrib);
         var credit = Text(L.T("about.credit"), 13, false, SecondaryText); credit.HorizontalAlignment = HorizontalAlignment.Center; stack.Children.Add(credit);
         var note = Text(L.T("about.note"), 12, false, SecondaryText); note.TextAlignment = TextAlignment.Center; note.Margin = new Thickness(8, 12, 8, 0); stack.Children.Add(note);
-        return stack;
+        stack.Children.Add(UpdateButton());
+        return new ScrollViewer { Content=stack, VerticalScrollBarVisibility=ScrollBarVisibility.Auto };
     }
 
     // ---- battery details ----
@@ -718,6 +773,17 @@ public sealed partial class MainWindow : Window
 
     async Task Capture()
     {
+        // Offline decision tests never download or launch an installer during captures.
+        string fixture="""
+        {"draft":false,"prerelease":false,"tag_name":"v9.0.0","assets":[{"name":"FluentVantageToolbar-9.0.0-Setup-with-dotnet.exe","browser_download_url":"https://github.com/MohamedElnaggar00/Fluent-Vantage-Toolbar/releases/download/v9.0.0/FluentVantageToolbar-9.0.0-Setup-with-dotnet.exe"}]}
+        """;
+        using(var test=System.Text.Json.JsonDocument.Parse(fixture)) {
+            if(UpdateDownload(test.RootElement,new Version(1,0,0))==null || UpdateDownload(test.RootElement,new Version(9,0,0))!=null || UpdateDownload(test.RootElement,new Version(10,0,0))!=null)throw new InvalidOperationException("Update version comparison failed");
+        }
+        foreach(var replacement in new[]{fixture.Replace("\"draft\":false","\"draft\":true"),fixture.Replace("\"prerelease\":false","\"prerelease\":true")}) {
+            using var test=System.Text.Json.JsonDocument.Parse(replacement);
+            if(UpdateDownload(test.RootElement,new Version(1,0,0))!=null)throw new InvalidOperationException("Non-stable update accepted");
+        }
         // Deterministic render fixture, clearly labelled as preview. Hardware services and the network are never called.
         int index = Array.IndexOf(args, "--capture"); string path = args[index + 1];
         string dir = Path.GetDirectoryName(Path.GetFullPath(path)) ?? ".", name = Path.GetFileName(path);
