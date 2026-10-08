@@ -60,6 +60,26 @@ jobs:
               $arguments=@('--capture',(Join-Path $PWD "$language-$theme.png"),"--$theme")
               if($language -eq 'arabic') { $arguments += '--arabic' }
               $p=Start-Process .\out-fd\FluentLegionToolbar.exe -ArgumentList $arguments -PassThru
+              Start-Sleep -Milliseconds 1800
+              Add-Type -AssemblyName System.Drawing
+              if(-not ('WindowCaptureBounds' -as [type])) {
+                Add-Type @'
+          using System; using System.Runtime.InteropServices;
+          public class WindowCaptureBounds {
+            [StructLayout(LayoutKind.Sequential)] public struct Rect { public int Left, Top, Right, Bottom; }
+            [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out Rect r);
+          }
+          '@
+              }
+              $p.Refresh()
+              $rect = New-Object WindowCaptureBounds+Rect
+              if($p.MainWindowHandle -ne 0 -and [WindowCaptureBounds]::GetWindowRect($p.MainWindowHandle, [ref]$rect)) {
+                $bitmap = New-Object System.Drawing.Bitmap ($rect.Right-$rect.Left),($rect.Bottom-$rect.Top)
+                $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+                $graphics.CopyFromScreen($rect.Left,$rect.Top,0,0,$bitmap.Size)
+                $bitmap.Save((Join-Path $PWD "window-$language-$theme.png"),[System.Drawing.Imaging.ImageFormat]::Png)
+                $graphics.Dispose(); $bitmap.Dispose()
+              } else { throw 'Actual window screenshot handle unavailable' }
               if(-not $p.WaitForExit(90000)) { Stop-Process $p.Id -Force; throw 'Capture timeout' }
               if($p.ExitCode -ne 0 -or -not (Test-Path "$language-$theme.png")) { throw 'Capture failed' }
             }
