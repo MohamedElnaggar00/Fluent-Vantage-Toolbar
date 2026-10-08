@@ -16,7 +16,7 @@ static class DeviceInfo
         get
         {
             var (name, type, lenovo) = Info.Value;
-            return lenovo && (name.Contains("Legion", StringComparison.OrdinalIgnoreCase) || MachineTypes.Contains(type, StringComparer.OrdinalIgnoreCase));
+            return lenovo && ((name.Contains("Legion", StringComparison.OrdinalIgnoreCase) || name.Contains("LOQ", StringComparison.OrdinalIgnoreCase)) || MachineTypes.Contains(type, StringComparer.OrdinalIgnoreCase));
         }
     }
 
