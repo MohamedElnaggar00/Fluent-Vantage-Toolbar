@@ -9,7 +9,7 @@
   #define Bundled 0
 #endif
 #define AppName "Fluent Vantage Toolbar"
-#define AppVersion "0.2.0"
+#define AppVersion "0.3.0"
 
 [Setup]
 AppId={{6B2D0C0E-5A3F-4E0B-9C61-4F1A7E2D9A10}
@@ -29,6 +29,9 @@ WizardStyle=modern
 SetupIconFile={#SourceDir}\app.ico
 UninstallDisplayIcon={app}\FluentLegionToolbar.exe
 DisableProgramGroupPage=yes
+CloseApplications=force
+RestartApplications=no
+CloseApplicationsFilter=FluentLegionToolbar.exe
 
 [Tasks]
 Name: "startup"; Description: "Start with Windows with administrator rights, without a UAC prompt (scheduled task)"; Flags: checkedonce
@@ -47,8 +50,27 @@ Filename: "{app}\FluentLegionToolbar.exe"; Parameters: "--show"; Description: "O
 [UninstallRun]
 Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\uninstall-startup.ps1"""; Flags: runhidden waituntilterminated; RunOnceId: "RemoveStartupTask"
 
-#if Str(Bundled) == "0"
 [Code]
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  ExitCode: Integer;
+begin
+  Result := '';
+  { New releases signal the tray instance directly. Earlier versions are closed
+    by Inno Setup's Restart Manager (force close enabled for this executable). }
+  if FileExists(ExpandConstant('{app}\FluentLegionToolbar.exe')) then
+    Exec(ExpandConstant('{app}\FluentLegionToolbar.exe'), '--shutdown', '', SW_HIDE, ewWaitUntilTerminated, ExitCode);
+  { Compatibility with 0.2.x: those releases treat WM_CLOSE as hide-to-tray.
+    Limit the fallback to the installed executable path, never all same-name apps. }
+  Exec('powershell.exe', '-NoProfile -NonInteractive -Command "' +
+    '$target=' + #39 + ExpandConstant('{app}\FluentLegionToolbar.exe') + #39 + '; ' +
+    '$apps=@(Get-Process FluentLegionToolbar -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $target }); ' +
+    'foreach($p in $apps) { $p.CloseMainWindow() | Out-Null; if(-not $p.WaitForExit(3000)) { $p.Kill(); $p.WaitForExit(5000) | Out-Null } }"',
+    '', SW_HIDE, ewWaitUntilTerminated, ExitCode);
+  if ExitCode <> 0 then Result := 'Could not close the running toolbar. Close it and try the update again.';
+end;
+
+#if Str(Bundled) == "0"
 function HasDesktopRuntime8: Boolean;
 var
   Names: TArrayOfString;
