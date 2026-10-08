@@ -136,7 +136,7 @@ public sealed partial class MainWindow : Window
     Task AnimateFlyout(bool show)
     {
         flyoutMotion?.Stop();
-        if(preview || !new Windows.UI.ViewManagement.UISettings().AnimationsEnabled){Root.Opacity=1;Root.RenderTransform=new TranslateTransform();return Task.CompletedTask;}
+        if((preview && !args.Contains("--interactive")) || !new Windows.UI.ViewManagement.UISettings().AnimationsEnabled){Root.Opacity=1;Root.RenderTransform=new TranslateTransform();return Task.CompletedTask;}
         var transform=new TranslateTransform();Root.RenderTransform=transform;
         var motion=new Microsoft.UI.Xaml.Media.Animation.Storyboard();flyoutMotion=motion;
         double time=show?220:170;
@@ -298,12 +298,15 @@ public sealed partial class MainWindow : Window
         return button;
     }
 
-    async void Navigate(string target) { view = target; Render(); await geometryReady; if (target == "battery") _ = LoadBatteryAsync(); if (target == "warranty") _ = LoadWarrantyAsync(false); }
+    async void Navigate(string target) { bool visible=AppWindow.IsVisible; view = target; Render(); await geometryReady; if(visible){AppWindow.Show();Activate();} if (target == "battery") _ = LoadBatteryAsync(); if (target == "warranty") _ = LoadWarrantyAsync(false); }
 
     void Render()
     {
         L.Set(settings.Language);
         ApplyTheme();
+        // Keep an expanding HWND off screen until its new XAML surface is painted.
+        restoreAfterGeometry=AppWindow.IsVisible && (!preview || args.Contains("--interactive"));
+        if(restoreAfterGeometry)AppWindow.Hide();
         if (tray != null) tray.SetItems(TrayItems());
         titleBar.Children.Clear(); titleBar.ColumnDefinitions.Clear();
         titleBar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -333,6 +336,7 @@ public sealed partial class MainWindow : Window
         ResizeForContent();
     }
 
+    bool restoreAfterGeometry;
     Task geometryReady=Task.CompletedTask;
     readonly SemaphoreSlim geometryLock=new(1,1);
     int geometryGeneration;
@@ -392,6 +396,7 @@ public sealed partial class MainWindow : Window
                 int top=Math.Clamp(y-AppWindow.Size.Height-16,area.Y,Math.Max(area.Y,area.Y+area.Height-AppWindow.Size.Height));
                 if(AppWindow.Position.X!=left || AppWindow.Position.Y!=top)AppWindow.Move(new PointInt32(left,top));
             }
+            if(restoreAfterGeometry && generation==geometryGeneration){restoreAfterGeometry=false;AppWindow.Show();}
         } finally {geometryLock.Release();}
     }
 
@@ -904,6 +909,26 @@ public sealed partial class MainWindow : Window
         await devicePreview.PreviewPositionAsync(true);
         await SaveImage(Path.Combine(dir,"device-bottom-"+name));
 
+        if(args.Contains("--interactive")) {
+            settings.HiddenTiles=Tiles.Skip(5).Select(t=>t.Id).ToList();settings.ShowWarranty=true;
+            view="main";Render();await geometryReady;
+            var phases=Path.Combine(dir,"interactive-phases.txt");
+            AppWindow.Hide();
+            for(int cycle=0;cycle<3;cycle++) {
+                File.AppendAllText(phases,$"{DateTime.UtcNow:O} open {cycle}\n");
+                ShowFlyout("main",false);await geometryReady;await Task.Delay(500);
+                int before=nativeResizeCount;
+                for(int refresh=0;refresh<5;refresh++){Apply();await NextFrameAsync();}
+                if(nativeResizeCount!=before)throw new InvalidOperationException("Unchanged refresh resized the window");
+                File.AppendAllText(phases,$"{DateTime.UtcNow:O} settings {cycle}\n");
+                Navigate("settings");await geometryReady;await Task.Delay(300);
+                File.AppendAllText(phases,$"{DateTime.UtcNow:O} main {cycle}\n");
+                Navigate("main");await geometryReady;await Task.Delay(300);
+                File.AppendAllText(phases,$"{DateTime.UtcNow:O} hide {cycle}\n");
+                HideFlyout();await Task.Delay(250);
+            }
+            File.AppendAllText(phases,$"PASS serialized geometry, three open/settings/main/hide cycles; unchanged refresh native resize count unchanged. Actual DPI={GetDpiForWindow(hwnd)}\n");
+        }
         Close();
     }
 }
