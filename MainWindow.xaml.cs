@@ -208,6 +208,8 @@ public sealed partial class MainWindow : Window
 
     async void OnTile(string id)
     {
+        DiagnosticLog.Write($"Tile clicked: {id}, busy={busy}, stateLoaded={current != null}");
+        if (busy || current == null) { Apply(); return; }
         var c = current;
         switch (id)
         {
@@ -395,8 +397,8 @@ public sealed partial class MainWindow : Window
         batteryFill.Width = percent.HasValue ? Math.Max(0, batteryFillHost.ActualWidth * percent.Value / 100d) : 0;
         var onFill = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 255, 255, 255));
         bool centreOnFill = (percent ?? 0) >= 50;
-        if (percentText != null) percentText.Foreground = centreOnFill ? onFill : Primary;
-        if (plugIcon != null) plugIcon.Foreground = centreOnFill ? onFill : Primary;
+        if (percentText != null) percentText.Foreground = onFill;
+        if (plugIcon != null) plugIcon.Foreground = onFill;
     }
 
     void Apply()
