@@ -649,9 +649,12 @@ public sealed partial class MainWindow : Window
     FrameworkElement MakeTile(TileDef tile)
     {
         var button = new ToggleButton { Width = 56, Height = 56, CornerRadius = new CornerRadius(28), HorizontalAlignment = HorizontalAlignment.Center, IsEnabled = false, Padding = new Thickness(0) };
-        button.Resources["ToggleButtonBackgroundChecked"] = ParseAccent(settings.AccentColor) is {} accent ? new SolidColorBrush(accent) : Rgb(156, 218, 155);
-        button.Resources["ToggleButtonBackgroundCheckedPointerOver"] = Rgb(140, 205, 139);
-        button.Resources["ToggleButtonBackgroundCheckedPressed"] = Rgb(123, 190, 123);
+        var accent = ParseAccent(settings.AccentColor) ?? Windows.UI.Color.FromArgb(255,156,218,155);
+        Windows.UI.Color Blend(Windows.UI.Color c, byte target, double amount) => Windows.UI.Color.FromArgb(255,
+            (byte)Math.Round(c.R+(target-c.R)*amount),(byte)Math.Round(c.G+(target-c.G)*amount),(byte)Math.Round(c.B+(target-c.B)*amount));
+        button.Resources["ToggleButtonBackgroundChecked"] = new SolidColorBrush(accent);
+        button.Resources["ToggleButtonBackgroundCheckedPointerOver"] = new SolidColorBrush(Blend(accent,255,0.18));
+        button.Resources["ToggleButtonBackgroundCheckedPressed"] = new SolidColorBrush(Blend(accent,0,0.12));
         button.Resources["ToggleButtonForegroundChecked"] = Rgb(20, 55, 27);
         button.Resources["ToggleButtonForegroundCheckedPointerOver"] = Rgb(20, 55, 27);
         button.Resources["ToggleButtonForegroundCheckedPressed"] = Rgb(20, 55, 27);
@@ -1153,7 +1156,16 @@ public sealed partial class MainWindow : Window
             foreach(var button in tileButtons.Values)button.IsEnabled=true;
             await SaveImage(Path.Combine(dir,$"icons-{(off ? "off" : "on")}-{name}"));
         }
-        foreach(string accent in new[]{"#0078D4","#744DA9"}) {
+        foreach(string accent in new[]{"#0078D4","#744DA9","#D83B01"}) {
+            settings.AccentColor=accent;view="main";Render();await geometryReady;
+            var hoverTile=tileButtons["fn"];hoverTile.IsEnabled=true;hoverTile.IsChecked=true;
+            var normal=((SolidColorBrush)hoverTile.Resources["ToggleButtonBackgroundChecked"]).Color;
+            var hover=((SolidColorBrush)hoverTile.Resources["ToggleButtonBackgroundCheckedPointerOver"]).Color;
+            if(hover.R<normal.R || hover.G<normal.G || hover.B<normal.B || hover==normal)throw new InvalidOperationException("Hover must lighten the current accent");
+            VisualStateManager.GoToState(hoverTile,"Checked",false);await Task.Delay(100);
+            await SaveImage(Path.Combine(dir,$"tile-accent-{accent[1..]}-{name}"));
+            VisualStateManager.GoToState(hoverTile,"CheckedPointerOver",false);await Task.Delay(100);
+            await SaveImage(Path.Combine(dir,$"tile-hover-{accent[1..]}-{name}"));
             settings.AccentColor=accent;view="settings";Render();await geometryReady;await Task.Delay(250);
             await SaveImage(Path.Combine(dir,$"accent-{accent[1..]}-{name}"));
         }
