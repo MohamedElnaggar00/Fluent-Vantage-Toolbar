@@ -40,8 +40,9 @@ Name: "startup"; Description: "Start with Windows with administrator rights, wit
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
 
 [Icons]
-Name: "{group}\{#AppName}"; Filename: "{app}\FluentLegionToolbar.exe"; Parameters: "--show"
-Name: "{group}\Uninstall {#AppName}"; Filename: "{uninstallexe}"
+Name: "{commondesktop}\{#AppName}"; Filename: "{app}\FluentLegionToolbar.exe"; Parameters: "--show"
+Name: "{commonprograms}\{#AppName}"; Filename: "{app}\FluentLegionToolbar.exe"; Parameters: "--show"
+Name: "{commonprograms}\Uninstall {#AppName}"; Filename: "{uninstallexe}"
 
 [Run]
 Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\install-startup.ps1"" -Silent"; Flags: runhidden waituntilterminated; Tasks: startup; StatusMsg: "Registering the startup task..."
