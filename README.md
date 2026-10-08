@@ -28,14 +28,13 @@ Fluent Vantage Toolbar is an independent replacement for the familiar Lenovo Van
 >
 > - Mohamed Elnaggar, developer
 
-<details>
-<summary><b>The original inspiration: Lenovo Vantage Toolbar</b></summary>
+### The original inspiration: Lenovo Vantage Toolbar
 
 <img src="3-readme-vantage-old-e3a8c4f9.jpg" width="450" alt="The original Lenovo Vantage Toolbar that inspired this independent project">
 
 *The original concept: battery information and everyday controls, within reach of the taskbar. Fluent Vantage Toolbar reimplements the idea in its own code, with Windows 11 styling and customizable controls.*
 
-</details>
+
 
 It is **not an official Lenovo product**, a fork of Lenovo Vantage, or a replacement for every feature in the full Vantage app. Hardware support depends on the laptop's firmware and drivers.
 
