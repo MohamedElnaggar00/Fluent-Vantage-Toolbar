@@ -85,6 +85,24 @@ jobs:
           if(-not $p.HasExited){Stop-Process $p.Id -Force;throw 'Interactive sequence timed out'}
           if($p.ExitCode -ne 0){Get-Content out/launch-error.txt -ErrorAction SilentlyContinue;throw 'Interactive sequence failed'}
           Get-Content interactive-phases.txt
+      - name: Verify installer shortcuts without startup task
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          & $iscc installer.iss /DSourceDir=out /DOutName=ShortcutTest /DBundled=1
+          if($LASTEXITCODE -ne 0) { throw 'Installer compilation failed' }
+          $destination=Join-Path $env:RUNNER_TEMP 'VantageShortcutTest'
+          $p=Start-Process .\installers\ShortcutTest.exe -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/TASKS=""',"/DIR=$destination" -Wait -PassThru
+          if($p.ExitCode -ne 0) { throw 'Silent installer failed' }
+          $shell=New-Object -ComObject WScript.Shell
+          foreach($directory in @([Environment]::GetFolderPath('CommonDesktopDirectory'),[Environment]::GetFolderPath('CommonPrograms'))) {
+            $link=Join-Path $directory 'Fluent Vantage Toolbar.lnk'
+            if(-not(Test-Path $link)) { throw "Missing shortcut: $link" }
+            $shortcut=$shell.CreateShortcut($link)
+            if($shortcut.TargetPath -ne (Join-Path $destination 'FluentLegionToolbar.exe') -or $shortcut.Arguments -ne '--show') { throw "Wrong shortcut target: $link" }
+            "$link -> $($shortcut.TargetPath) $($shortcut.Arguments)" | Add-Content installer-shortcuts.txt
+          }
+          Get-Content installer-shortcuts.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -96,4 +114,5 @@ jobs:
             interactive-phases.txt
             navigation-geometry.csv
             navigation-native-bounds.csv
+            installer-shortcuts.txt
             interactive-frames/
