@@ -6,8 +6,9 @@ using NAudio.CoreAudioApi;
 using Microsoft.Win32;
 namespace FluentLegionToolbar.Hardware;
 // Protocol facts are documented in SOURCES.md. No Lenovo services are stopped or replaced.
+public enum ThermalMode { Quiet=1, Balanced=2, Performance=3 }
 public enum ChargeMode { Normal, Conservation, Rapid }
-public sealed record DeviceState(int? Percent, bool Plugged, bool Charging, ChargeMode? Mode, bool? Muted, bool? TouchpadLocked, string Model, string[] Problems, bool? FnLocked = null, int? UsbMode = null, int? RefreshHz = null, int[]? AvailableHz = null);
+public sealed record DeviceState(int? Percent, bool Plugged, bool Charging, ChargeMode? Mode, bool? Muted, bool? TouchpadLocked, string Model, string[] Problems, bool? FnLocked = null, int? UsbMode = null, int? RefreshHz = null, int[]? AvailableHz = null, ThermalMode? Thermal = null);
 public sealed class LegionDevice
 {
     [StructLayout(LayoutKind.Sequential)] struct PowerStatus { public byte AC, Flags, Percent, Reserved; public uint Life, FullLife; }
@@ -97,9 +98,11 @@ public sealed class LegionDevice
         try { uint settings=Exchange(2,0x831020E8); fn=((settings&1024)!=0) ^ FnInverted; } catch(Exception e) { errors.Add("Fn Lock: "+e.Message); }
         try { uint settings=Exchange(2,0x831020E8); usb=(settings&128)==0?0:(settings&32768)!=0?2:1; } catch(Exception e) { errors.Add("USB: "+e.Message); }
         try {(hz,rates)=DisplayControl.Read();}catch(Exception e){errors.Add("Display: "+e.Message);}
+        ThermalMode? thermal=null;
+        try { if(Touchpad("IsSupportSmartFan")>0)thermal=DecodeThermal(Touchpad("GetSmartFanMode")); }catch(Exception e){errors.Add("Thermal mode: "+e.Message);}
         foreach (var error in errors) DiagnosticLog.Write(error);
         DiagnosticLog.Write($"State model={model} type={DeviceInfo.MachineType} supported={targetModel} fn={fn} micMuted={muted} touchpadLocked={locked} usb={usb} hz={hz} mode={mode}");
-        return new DeviceState(percent, plugged, charging, mode, muted, locked, model, errors.ToArray(), fn.HasValue ? fnDisplayState : null,usb,hz,rates);
+        return new DeviceState(percent, plugged, charging, mode, muted, locked, model, errors.ToArray(), fn.HasValue ? fnDisplayState : null,usb,hz,rates,thermal);
     });
     // Same control path as the reference toolkit: EnergyDrv settings IOCTL, query 2, bit 10 = Fn Lock, set 0xE = on, 0xF = off.
     // No support bit is required first; the query itself succeeding is the capability check. The state is read back with retries.
@@ -118,6 +121,30 @@ public sealed class LegionDevice
         Exchange(enabled?10u:11u,0x831020E8);Exchange(enabled?19u:18u,0x831020E8);
         uint raw=Exchange(2,0x831020E8);int mode=(raw&128)==0?0:(raw&32768)!=0?2:1;
         if(mode!=(enabled?2:0))throw new InvalidOperationException("Always-on USB setting was not confirmed.");
+    });
+    public static ThermalMode DecodeThermal(int raw) => raw switch {
+        1=>ThermalMode.Quiet,2=>ThermalMode.Balanced,3=>ThermalMode.Performance,
+        _=>throw new InvalidOperationException($"Unknown thermal mode value: {raw}")
+    };
+    public static ThermalMode NextThermal(ThermalMode current) => current switch {
+        ThermalMode.Balanced=>ThermalMode.Performance,ThermalMode.Performance=>ThermalMode.Quiet,ThermalMode.Quiet=>ThermalMode.Balanced,
+        _=>throw new InvalidOperationException("Unknown thermal mode cannot be changed")
+    };
+    public Task CycleThermalAsync() => Task.Run(async ()=> {
+        await gate.WaitAsync();
+        try {
+            if(Touchpad("IsSupportSmartFan")<=0)throw new InvalidOperationException("Thermal mode is not supported by the provider");
+            var previous=DecodeThermal(Touchpad("GetSmartFanMode"));var next=NextThermal(previous);
+            if(next==ThermalMode.Performance && (!GetSystemPowerStatus(out var power) || power.AC!=1))throw new InvalidOperationException("Performance mode requires AC power");
+            // Match Toolkit's documented firmware workaround for affected models.
+            if(previous==ThermalMode.Quiet && next==ThermalMode.Performance){Touchpad("SetSmartFanMode",2);await Task.Delay(500);}
+            Touchpad("SetSmartFanMode",(int)next);
+            for(int attempt=0;attempt<10;attempt++) {
+                await Task.Delay(100);
+                if(DecodeThermal(Touchpad("GetSmartFanMode"))==next){DiagnosticLog.Write($"Thermal mode verified: {previous} -> {next}");return;}
+            }
+            throw new InvalidOperationException("Thermal mode change was not confirmed by the firmware");
+        } finally {gate.Release();}
     });
     public Task SetRefreshAsync(int hz) => Task.Run(()=>DisplayControl.Set(hz));
     public async Task SetModeAsync(ChargeMode next)
