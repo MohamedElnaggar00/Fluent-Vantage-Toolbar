@@ -93,7 +93,7 @@ public sealed partial class MainWindow : Window
         tray = new TrayIcon(hwnd, Path.Combine(AppContext.BaseDirectory, "app.ico"), TrayItems(), () => ShowFlyout(null, true), OnTrayMenu, OpenTrayContext);
         tray.NativeTip = true; tray.SetTip("Fluent Vantage Toolbar");
         AppWindow.Closing += (_, e) => { if (!exiting && !preview) { e.Cancel = true; HideFlyout(); } };
-        Closed += (_, _) => { dashboard?.Close();contextMenu?.Close();timer.Stop(); tray.Dispose(); };
+        Closed += (_, _) => { contextMenu?.Close();timer.Stop(); tray.Dispose(); };
         Activated += (_, e) => { if (e.WindowActivationState == WindowActivationState.Deactivated && !preview && !dialogOpen) HideFlyout(); };
         Root.ActualThemeChanged += (_, _) => { if (!preview) Render(); };
         timer.Tick += async (_, _) => { if (AppWindow.IsVisible && view == "main") await Refresh(); };
@@ -186,7 +186,7 @@ public sealed partial class MainWindow : Window
 
     (int, string)[] TrayItems() => [(1, L.T("menu.open")), (2, L.T("menu.settings")), (3, L.T("menu.about")), (4, L.Ar ? "إغلاق التطبيق" : "Close app")];
 
-    void ExitApp(){++animationGeneration;exiting=true;dashboard?.Close();dashboard=null;contextMenu?.Close();contextMenu=null;Close();}
+    void ExitApp(){++animationGeneration;exiting=true;dashboard=null;contextMenu?.Close();contextMenu=null;Close();}
     void ListenForExitRequests()
     {
         try {var signal=new EventWaitHandle(false,EventResetMode.AutoReset,Startup.ExitEventName);var queue=DispatcherQueue.GetForCurrentThread();new Thread(()=>{while(true){signal.WaitOne();queue.TryEnqueue(ExitApp);}}){IsBackground=true}.Start();}catch{}
@@ -306,7 +306,7 @@ public sealed partial class MainWindow : Window
         titleBar.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         titleBar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         titleBar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        string titleText = view switch { "settings" => L.T("settings.title"), "about" => L.T("about.title"), "battery" => L.T("bat.title"), "warranty" => L.T("war.title"), _ => L.T("title") };
+        string titleText = view switch { "settings" => L.T("settings.title"), "about" => L.T("about.title"), "battery" => L.T("bat.title"), "warranty" => L.T("war.title"), "device" => L.Ar ? "عن جهازك" : "About your device", _ => L.T("title") };
         if (view != "main")
         {
             var back = IconButton("\uE72B", L.T("back"), () => Navigate("main"));
@@ -324,7 +324,7 @@ public sealed partial class MainWindow : Window
         Grid.SetColumn(close, 3); titleBar.Children.Add(close);
         PositionTitleBar();
         tileButtons.Clear();
-        body.Content = view switch { "settings" => BuildSettings(), "about" => BuildAbout(), "battery" => BuildBattery(), "warranty" => BuildWarranty(), _ => BuildMain() };
+        body.Content = view switch { "settings" => BuildSettings(), "about" => BuildAbout(), "battery" => BuildBattery(), "warranty" => BuildWarranty(), "device" => dashboard ??= new DeviceDashboardWindow(settings.Theme,current,preview), _ => BuildMain() };
         ResizeForContent();
         if (view == "main") Apply();
     }
@@ -507,13 +507,7 @@ public sealed partial class MainWindow : Window
         if (statusText != null) statusText.Text = preview ? L.T("preview") : value.Problems.Length > 0 ? L.T("status.some") : L.T("status.ok");
     }
 
-    void OpenDashboard()
-    {
-        if(dashboard!=null){dashboard.Activate();return;}
-        dashboard=new DeviceDashboardWindow(settings.Theme,current,preview);
-        dashboard.Closed+=(_,_)=>dashboard=null;
-        dashboard.Activate();
-    }
+    void OpenDashboard(){dashboard=new DeviceDashboardWindow(settings.Theme,current,preview);Navigate("device");}
 
     // ---- settings ----
     UIElement BuildSettings()
@@ -753,9 +747,9 @@ public sealed partial class MainWindow : Window
             await SaveImage(Path.Combine(dir, "level" + level + "-" + name));
         }
         var devicePreview=new DeviceDashboardWindow(settings.Theme,current,true);
-        devicePreview.Activate();
+        dashboard=devicePreview;view="device";Render();
         await devicePreview.CaptureAsync(Path.Combine(dir,"device-"+name));
-        devicePreview.Close();
+
         Close();
     }
 }
