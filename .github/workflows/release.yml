@@ -2,7 +2,7 @@ name: Release
 # Builds the three distribution flavors and publishes them to the GitHub Release
 # for the version in FluentLegionToolbar.csproj (<Version>). Runs after every push
 # to main that changes code (README/docs-only pushes are skipped), or manually.
-# Same version again: the release and its tag are recreated on the latest commit.
+# Releases are immutable: existing versions/tags are never deleted or overwritten.
 # New version: bump <Version> in the csproj and a new release is created.
 on:
   push:
@@ -113,7 +113,7 @@ jobs:
           $v = '${{ steps.ver.outputs.version }}'
           $tag = "v$v"
           gh release view $tag *> $null
-          if($LASTEXITCODE -eq 0) { gh release delete $tag --cleanup-tag --yes }
+          if($LASTEXITCODE -eq 0) { throw "Release $tag already exists. Bump the version before publishing; old releases are immutable." }
           $notes = @"
           Fluent Vantage Toolbar $v (private build, built from commit ${{ github.sha }}).
 
