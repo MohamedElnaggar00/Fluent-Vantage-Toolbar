@@ -352,6 +352,17 @@ public sealed partial class MainWindow : Window
         double scale = Math.Max(1, GetDpiForWindow(hwnd) / 96d);
         double height = Math.Min(requested, area.Height / scale - 16);
         AppWindow.ResizeClient(new SizeInt32((int)Math.Ceiling(520 * scale), (int)Math.Ceiling(height * scale)));
+        if(view=="main" && Root.XamlRoot!=null) {
+            Root.UpdateLayout();
+            // WinUI's extended-caption root may differ from the native client area.
+            // Correct against the rendered root rather than assuming those sizes match.
+            var actualDelta=height-Root.ActualHeight;
+            if(Math.Abs(actualDelta)>0.5) {
+                var client=AppWindow.ClientSize;
+                AppWindow.ResizeClient(new SizeInt32(client.Width,client.Height+(int)Math.Round(actualDelta*scale)));
+                Root.UpdateLayout();
+            }
+        }
         if (!preview && tray != null && tray.TryGetAnchor(out int x, out int y)) {
             var work = DisplayArea.GetFromPoint(new PointInt32(x, y), DisplayAreaFallback.Nearest).WorkArea;
             int left = Math.Clamp(x - AppWindow.Size.Width / 2, work.X, Math.Max(work.X, work.X + work.Width - AppWindow.Size.Width));
