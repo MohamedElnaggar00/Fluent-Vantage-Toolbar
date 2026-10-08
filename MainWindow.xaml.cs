@@ -485,6 +485,7 @@ public sealed partial class MainWindow : Window
             {
                 if(AppWindow.Size.Width!=desired.Width || AppWindow.Size.Height!=desired.Height) {
                     AppWindow.Resize(desired);nativeResizeCount++;
+                    Root.UpdateLayout();RedrawWindow(hwnd,IntPtr.Zero,IntPtr.Zero,0x0185);DwmFlush();
                 }
                 await NextFrameAsync();Root.UpdateLayout();await NextFrameAsync();
                 if(!preview && tray!=null && tray.TryGetAnchor(out int x,out int y)) {
@@ -602,13 +603,14 @@ public sealed partial class MainWindow : Window
         else button.Content = Glyph(tile.Glyph, 24);
         button.Click += (_, _) => OnTile(tile.Id);
         tileButtons[tile.Id] = button;
-        var label = Text(L.T(tile.LabelKey), 10.5);
+        var label = Text(tile.Id=="thermal" ? ThermalLabel(current?.Thermal) : L.T(tile.LabelKey), 10.5);
         label.TextAlignment = TextAlignment.Center; label.HorizontalAlignment = HorizontalAlignment.Center; label.MaxLines = 2;
         var panel = new StackPanel { Width = 86, Spacing = 8 };
         panel.Children.Add(button); panel.Children.Add(label);
         return panel;
     }
 
+    string ThermalLabel(ThermalMode? mode) => mode switch { ThermalMode.Quiet=>L.Ar ? "هادئ" : "Quiet",ThermalMode.Balanced=>L.Ar ? "متوازن" : "Balanced",ThermalMode.Performance=>L.Ar ? "أداء" : "Performance",_=>L.Ar ? "غير متاح" : "Unavailable" };
     UIElement ThermalIcon(ThermalMode? mode)
     {
         Brush ink=mode switch { ThermalMode.Quiet=>Rgb(53,123,242),ThermalMode.Performance=>Rgb(212,51,51),_=>Primary };
@@ -1073,8 +1075,9 @@ public sealed partial class MainWindow : Window
         }
         settings.HiddenTiles=Tiles.Where(t=>t.Id!="thermal").Select(t=>t.Id).ToList();
         foreach(ThermalMode? mode in new ThermalMode?[]{ThermalMode.Quiet,ThermalMode.Balanced,ThermalMode.Performance,null}) {
-            current=current! with { Thermal=mode };view="main";Render();await geometryReady;
-            await SaveImage(Path.Combine(dir,$"thermal-{mode?.ToString() ?? "unavailable"}-"+name));
+            current=current! with { Thermal=mode };view="main";Render();await geometryReady;Apply();
+            if(tileButtons.TryGetValue("thermal",out var thermal))thermal.IsEnabled=mode.HasValue;
+            await Task.Delay(100);await SaveImage(Path.Combine(dir,$"thermal-{mode?.ToString() ?? "unavailable"}-"+name));
         }
         current=current! with { Thermal=ThermalMode.Balanced };
         // Every tile-row/link combination must fit without a main-page scroll host.
