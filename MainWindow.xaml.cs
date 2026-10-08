@@ -361,15 +361,15 @@ public sealed partial class MainWindow : Window
         return panel;
     }
 
-    Microsoft.UI.Xaml.Shapes.Line? fnSlash;
+    FontIcon? fnLockIcon;
     UIElement MakeFnIcon()
     {
-        // "FnLock" wordmark with a diagonal slash while Fn Lock is off.
-        var grid = new Grid { Width = 44, Height = 32, IsHitTestVisible = false };
-        var text = new TextBlock { Text = "FnLock", FontSize = 13, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
-        fnSlash = new Microsoft.UI.Xaml.Shapes.Line { X1 = 5, Y1 = 3, X2 = 39, Y2 = 29, StrokeThickness = 3, StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round };
-        fnSlash.SetBinding(Microsoft.UI.Xaml.Shapes.Shape.StrokeProperty, new Microsoft.UI.Xaml.Data.Binding { Source = text, Path = new PropertyPath("Foreground") });
-        grid.Children.Add(text); grid.Children.Add(fnSlash);
+        // Lock glyph with "Fn" inside it; the lock closes when Fn Lock is on and opens when it is off.
+        var grid = new Grid { Width = 34, Height = 34, IsHitTestVisible = false };
+        fnLockIcon = Glyph("\uE785", 30);
+        fnLockIcon.HorizontalAlignment = HorizontalAlignment.Center; fnLockIcon.VerticalAlignment = VerticalAlignment.Center;
+        var text = new TextBlock { Text = "Fn", FontSize = 10, FontWeight = Microsoft.UI.Text.FontWeights.Bold, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 9, 0, 0) };
+        grid.Children.Add(fnLockIcon); grid.Children.Add(text);
         return grid;
     }
 
@@ -380,7 +380,7 @@ public sealed partial class MainWindow : Window
         batteryColor = BatteryColorFor(percent);
         batteryFill.Background = new SolidColorBrush(batteryColor);
         batteryFill.Width = percent.HasValue ? Math.Max(0, batteryFillHost.ActualWidth * percent.Value / 100d) : 0;
-        var onFill = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 27, 27, 27));
+        var onFill = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 255, 255, 255));
         bool centreOnFill = (percent ?? 0) >= 50;
         if (percentText != null) percentText.Foreground = centreOnFill ? onFill : Primary;
         if (plugIcon != null) plugIcon.Foreground = centreOnFill ? onFill : Primary;
@@ -403,7 +403,7 @@ public sealed partial class MainWindow : Window
             if (tip != null) ToolTipService.SetToolTip(button, tip);
         }
         Set("fn", value.FnLocked, value.FnLocked.HasValue, L.T("tip.fn"));
-        if (fnSlash != null) fnSlash.Visibility = value.FnLocked == true ? Visibility.Collapsed : Visibility.Visible;
+        if (fnLockIcon != null) fnLockIcon.Glyph = value.FnLocked == true ? "\uE72E" : "\uE785";
         Set("usb", value.UsbMode == 2, value.UsbMode.HasValue, L.T("tip.usb"));
         bool exactRates = value.AvailableHz?.Contains(60) == true && value.AvailableHz.Contains(144);
         Set("refresh", value.RefreshHz == 144, exactRates, exactRates ? L.T("tip.refresh.ok") : L.T("tip.refresh.no"));
@@ -640,4 +640,3 @@ public sealed partial class MainWindow : Window
         Close();
     }
 }
-
