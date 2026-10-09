@@ -6,7 +6,8 @@ public sealed class AppSettings
 {
     public string Language { get; set; } = "en";
     public string Theme { get; set; } = "system";
-    public string? AccentColor { get; set; }
+    public const string DefaultAccentColor = "#00A6A6";
+    public string? AccentColor { get; set; } = DefaultAccentColor;
     public bool AutoCheckUpdates { get; set; } = true;
     public string? LastNotifiedUpdate { get; set; }
     public bool ThermalDefaultLayoutApplied { get; set; } = true;
@@ -28,6 +29,7 @@ public sealed class AppSettings
                 if(!loaded.HiddenTiles.Contains("fn"))loaded.HiddenTiles.Add("fn");
                 loaded.ThermalDefaultLayoutApplied=true;loaded.Save();
             }
+            loaded.AccentColor ??= DefaultAccentColor;
             return loaded;
         }} catch { }
         return new();

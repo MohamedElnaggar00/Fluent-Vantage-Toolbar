@@ -332,9 +332,9 @@ public sealed partial class MainWindow : Window
             } finally {dialogOpen=false;}
         };
         var reset=new Button { Content=L.Ar ? "استعادة الافتراضي" : "Restore default" };
-        reset.Click+=(_,_)=>{settings.AccentColor=null;settings.Save();dashboard=null;Render();};
+        reset.Click+=(_,_)=>{settings.AccentColor=AppSettings.DefaultAccentColor;settings.Save();dashboard=null;Render();};
         actions.Children.Add(custom);actions.Children.Add(reset);stack.Children.Add(actions);
-        stack.Children.Add(Text(settings.AccentColor ?? (L.Ar ? "لون Windows الافتراضي" : "Windows default accent"),12,false,SecondaryText));
+        stack.Children.Add(Text(settings.AccentColor ?? AppSettings.DefaultAccentColor,12,false,SecondaryText));
         return Card(stack,new Thickness(14));
     }
 
@@ -408,7 +408,7 @@ public sealed partial class MainWindow : Window
         null => Windows.UI.Color.FromArgb(255, 156, 218, 155),
         <= 5 => Windows.UI.Color.FromArgb(255, 255, 153, 164),   // Windows 11 critical
         <= 20 => Windows.UI.Color.FromArgb(255, 252, 225, 0),    // Windows 11 caution
-        _ => ParseAccent(settings.AccentColor) ?? Windows.UI.Color.FromArgb(255, 156, 218, 155), // healthy battery follows the applied accent
+        _ => Windows.UI.Color.FromArgb(255, 156, 218, 155), // battery keeps its original color, independent of the UI accent
     };
 
     // ---- view building ----
@@ -998,7 +998,7 @@ public sealed partial class MainWindow : Window
         var version = Text(L.T("about.version") + " " + (typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? "0.2.0"), 13, false, SecondaryText); version.HorizontalAlignment = HorizontalAlignment.Center; stack.Children.Add(version);
         var dev = Text(L.T("about.developer"), 14); dev.HorizontalAlignment = HorizontalAlignment.Center; stack.Children.Add(dev);
         var contrib = Text(L.T("about.contrib"), 13, false); contrib.HorizontalAlignment = HorizontalAlignment.Center; contrib.TextAlignment = TextAlignment.Center; contrib.TextWrapping = TextWrapping.Wrap; stack.Children.Add(contrib);
-        var credit = Text(L.T("about.credit"), 13, false, SecondaryText); credit.HorizontalAlignment = HorizontalAlignment.Center; stack.Children.Add(credit);
+        var credit = new HyperlinkButton { Content=L.T("about.credit"), NavigateUri=new Uri("https://instinct.com"), FontSize=13, HorizontalAlignment=HorizontalAlignment.Center }; stack.Children.Add(credit);
         var note = Text(L.T("about.note"), 12, false, SecondaryText); note.TextAlignment = TextAlignment.Center; note.Margin = new Thickness(8, 12, 8, 0); stack.Children.Add(note);
         var repo=new HyperlinkButton { Content="GitHub Repo Link",NavigateUri=new Uri("https://github.com/MohamedElnaggar00/Fluent-Vantage-Toolbar"),HorizontalAlignment=HorizontalAlignment.Center };
         stack.Children.Add(repo);
@@ -1234,9 +1234,9 @@ public sealed partial class MainWindow : Window
             foreach(var button in tileButtons.Values)button.IsEnabled=true;
             await SaveImage(Path.Combine(dir,$"icons-{(off ? "off" : "on")}-{name}"));
         }
-        foreach(string accent in new[]{"#0078D4","#744DA9","#D83B01"}) {
+        foreach(string accent in new[]{"#00A6A6","#0078D4","#744DA9","#D83B01"}) {
             settings.AccentColor=accent;current=current! with { Percent=60 };view="main";Render();await geometryReady;
-            if(BatteryColorFor(60)!=ParseAccent(accent) || BatteryColorFor(20)!=Windows.UI.Color.FromArgb(255,252,225,0) || BatteryColorFor(5)!=Windows.UI.Color.FromArgb(255,255,153,164))throw new InvalidOperationException("Battery accent or warning thresholds failed");
+            if(BatteryColorFor(60)!=Windows.UI.Color.FromArgb(255,156,218,155) || BatteryColorFor(20)!=Windows.UI.Color.FromArgb(255,252,225,0) || BatteryColorFor(5)!=Windows.UI.Color.FromArgb(255,255,153,164))throw new InvalidOperationException("Battery accent or warning thresholds failed");
             var hoverTile=tileButtons["conserve"];hoverTile.IsEnabled=true;hoverTile.IsChecked=true;
             var normal=((SolidColorBrush)hoverTile.Resources["ToggleButtonBackgroundChecked"]).Color;
             var hover=((SolidColorBrush)hoverTile.Resources["ToggleButtonBackgroundCheckedPointerOver"]).Color;
@@ -1252,7 +1252,7 @@ public sealed partial class MainWindow : Window
             settingsScroll.ChangeView(null,settingsScroll.ScrollableHeight,null,true);await Task.Delay(250);
             await SaveImage(Path.Combine(dir,"settings-bottom-"+name));
         }
-        settings.AccentColor=null;ApplyAccent();
+        settings.AccentColor=AppSettings.DefaultAccentColor;ApplyAccent();
         if(ParseAccent("#12ABEF") is not {} parsed || parsed.R!=0x12 || ParseAccent("invalid")!=null)throw new InvalidOperationException("Accent parsing failed");
         using(var notice=new UpdateNoticeCaptureScope(new UpdateNoticeWindow("v9.0.0","https://github.com/MohamedElnaggar00/Fluent-Vantage-Toolbar/releases/download/v9.0.0/FluentVantageToolbar-9.0.0-Setup.exe",L.Ar,Dark,true))) {
             notice.Window.ShowNotice();await Task.Delay(400);

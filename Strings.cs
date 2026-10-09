@@ -57,7 +57,7 @@ static class L
         ["about.version"] = ("Version", "الإصدار"),
         ["about.developer"] = ("Developer: Mohamed Elnaggar", "المطوّر: محمد النجار"),
         ["about.contrib"] = ("Contributors: Mohamed Elnaggar (developer), app.instinct (development contributor)", "المساهمون: محمد النجار (المطوّر)، app.instinct (مساهم في التطوير)"),
-        ["about.credit"] = ("brought to you by app.instinct AI", "brought to you by app.instinct AI"),
+        ["about.credit"] = ("brought to you by Instinct", "مقدّم إليكم من Instinct"),
         ["about.note"] = ("Hardware protocols were studied from LenovoLegionToolkit (GPL-3.0). This app is an independent implementation and does not stop Lenovo services.", "دُرست بروتوكولات العتاد من مشروع LenovoLegionToolkit ‏(GPL-3.0). هذا البرنامج تنفيذ مستقل ولا يوقف خدمات Lenovo."),
         ["bat.title"] = ("Battery details", "تفاصيل البطارية"),
         ["bat.header"] = ("Battery", "البطارية"),
