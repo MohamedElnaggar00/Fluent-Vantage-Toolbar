@@ -13,7 +13,7 @@ A small Windows 11-style toolbar for Lenovo **Legion** and **LOQ** laptops.
 </div>
 
 <p align="center">
-  <img src="2-hero-main-taskbar-48cf505e.jpg" width="560" alt="Fluent Vantage Toolbar open above the Windows taskbar on the developer's Legion 5, with green active tiles and descriptive labels">
+  <img src="1-2-hero-light-dark-5ea42c74.jpg" width="1000" alt="Fluent Vantage Toolbar in dark and light themes on the developer's Legion 5, with battery status and the Balanced thermal-mode tile">
 </p>
 
 <p align="center"><em>Main flyout on a Legion 5 15ITH6H.</em></p>
@@ -35,9 +35,23 @@ Independent project, not an official Lenovo product or a replacement for the ful
 
 ## Screenshots
 
-![Battery details, settings and About your device on the developer's Legion 5](1-fluent-vantage-screenshots.jpg)
+<p align="center">
+  <img src="2-4-settings-accent-ade6f352.jpg" width="420" alt="Language, theme and accent settings">
+</p>
 
-*Screenshots from a Legion 5 15ITH6H running v0.3.0.*
+<p align="center">
+  <img src="3-5-battery-details-27c90952.jpg" width="420" alt="Battery capacity and health details">
+</p>
+
+<p align="center">
+  <img src="4-6-device-details-0141a8cf.jpg" width="420" alt="CPU and GPU device information">
+</p>
+
+<p align="center">
+  <img src="5-7-reorder-controls-5df4fea4.jpg" width="420" alt="Button ordering with drag handles and Done">
+</p>
+
+*Screenshots supplied by the developer from his Legion 5 15ITH6H.*
 
 ## Features
 
@@ -82,6 +96,16 @@ Unavailable hardware data is marked as such. Dedicated GPU memory is not inferre
 - Custom show/hide animation, respecting Windows' animation setting.
 
 </details>
+
+### New customization and controls
+
+- **Thermal mode:** read the current mode at startup without changing it, then click to cycle Quiet, Balanced and Performance. Performance requires AC power. The thermal tile replaces Fn Lock in the default layout; Fn Lock remains available in Settings.
+- **Button ordering:** choose **Reorder** in Settings, drag the handles, then choose **Done**. Visibility toggles are disabled while reordering to avoid accidental changes. The order is saved using in-app pointer handling rather than elevated native drag/drop.
+- **Themes and accent colors:** use the system, light or dark theme; choose from six accent presets, select a custom color (including hex input), or restore the default. Custom-accent hover and healthy-battery colors are supported.
+- **Organized Settings and About:** language, theme/accent, buttons, links and diagnostics, with Updates at the bottom. About shows the app version, developer/contributor credits, **GitHub Repo Link** and a manual update check.
+- **Update checks:** automatic checks are enabled by default, 45 seconds after launch and every six hours after that. Downloading and installing remain your choice. Manual checks are also available, and the download matches the current build's .NET package type.
+- **Flyout behavior:** restored slide/fade show and hide animation, Mica backdrop and page fade/rise transitions. DWM cloaking avoids blank black frames when reopening from the tray; window resizing remains instant.
+- **Installer improvements:** desktop and Start menu shortcuts, plus shutdown and verification of running toolbar instances before replacing files during upgrades.
 
 ## Compatibility
 
