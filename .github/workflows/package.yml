@@ -1,50 +1,61 @@
-name: Package private distribution
-on: workflow_dispatch
+name: Verify hotfix installer
+on:
+  push:
+    branches: [hotfix-0.3.8]
+    paths: ['.github/workflows/package.yml']
+  workflow_dispatch:
 permissions:
-  contents: read
+  actions: read
+  contents: write
 jobs:
-  package:
+  verify:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/download-artifact@v4
         with:
-          dotnet-version: 8.0.x
-      - uses: microsoft/setup-msbuild@v2
-      - name: Publish framework-dependent and self-contained builds
+          name: hotfix-distribution
+          run-id: 37991309496
+          github-token: ${{ github.token }}
+          path: release
+      - name: Capture installer and test runtime paths
         shell: pwsh
         run: |
-          function Publish($dir, $selfContained) {
-            msbuild FluentLegionToolbar.csproj /restore /t:Publish /p:Configuration=Release /p:Platform=x64 /p:RuntimeIdentifier=win-x64 /p:SelfContained=$selfContained /p:PublishDir="$dir/"
-            if($LASTEXITCODE -ne 0) { throw "Build failed: $dir" }
-            $buildDir=Join-Path $PWD 'bin/x64/Release/net8.0-windows10.0.19041.0/win-x64'
-            Get-ChildItem $buildDir -Recurse -Include *.xbf,*.pri | ForEach-Object {
-              $relative=$_.FullName.Substring($buildDir.Length+1)
-              $destination=Join-Path (Join-Path $PWD $dir) $relative
-              New-Item -ItemType Directory -Force (Split-Path $destination) | Out-Null
-              Copy-Item $_.FullName $destination -Force
-            }
-            if(-not(Test-Path "$dir/MainWindow.xbf")) { throw "Compiled XAML missing in $dir" }
+          Add-Type -AssemblyName System.Drawing
+          Add-Type @'
+          using System;using System.Runtime.InteropServices;
+          public class CaptureSetup {
+          public delegate bool Callback(IntPtr h,IntPtr l);
+          [DllImport("user32.dll")] public static extern bool EnumWindows(Callback c,IntPtr l);
+          [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
+          [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h,out uint p);
+          [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
+          [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h,int n);
+          [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h,out Rect r);
+          [StructLayout(LayoutKind.Sequential)] public struct Rect{public int L,T,R,B;}
           }
-          Publish 'out-fd' 'false'
-          Remove-Item -Recurse -Force obj, bin
-          Publish 'out-sc' 'true'
-      - name: Portable zip
-        shell: pwsh
-        run: Compress-Archive out-fd/* FluentVantageToolbar-portable-x64.zip
-      - name: Installers (Inno Setup)
-        shell: pwsh
-        run: |
-          choco install innosetup -y --no-progress
-          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
-          & $iscc installer.iss /DSourceDir=out-fd /DOutName=FluentVantageToolbar-Setup /DBundled=0
-          if($LASTEXITCODE -ne 0) { throw 'Installer build failed' }
-          & $iscc installer.iss /DSourceDir=out-sc /DOutName=FluentVantageToolbar-Setup-with-dotnet /DBundled=1
-          if($LASTEXITCODE -ne 0) { throw 'Bundled installer build failed' }
-          Get-ChildItem installers | Select-Object Name,Length
+          '@
+          $setup=Get-ChildItem release/*-Setup.exe | Select-Object -First 1
+          foreach($mode in @('present','missing')) {
+            $root=Join-Path $env:ProgramFiles 'dotnet/shared/Microsoft.NETCore.App'
+            $moved=@()
+            if($mode -eq 'missing') {Get-ChildItem $root -Directory | Where-Object {$_.Name -like '8.*'} | ForEach-Object {Rename-Item $_.FullName ('hidden-'+$_.Name);$moved+=$_.Name}}
+            try {
+              $p=Start-Process $setup.FullName -PassThru
+              Start-Sleep -Seconds 5
+              $script:handles=@()
+              [CaptureSetup]::EnumWindows({param($h,$l) $owner=0;[CaptureSetup]::GetWindowThreadProcessId($h,[ref]$owner)|Out-Null;if([CaptureSetup]::IsWindowVisible($h)){ $proc=Get-Process -Id $owner -ErrorAction SilentlyContinue;if($proc -and $proc.ProcessName -like '*Setup*'){$script:handles+=$h}};return $true},[IntPtr]::Zero)|Out-Null
+              if(-not $handles){throw 'Installer window not found'}
+              $h=$handles[-1];[CaptureSetup]::ShowWindow($h,9)|Out-Null;[CaptureSetup]::SetForegroundWindow($h)|Out-Null
+              Start-Sleep -Seconds 1
+              $r=New-Object CaptureSetup+Rect;[CaptureSetup]::GetWindowRect($h,[ref]$r)|Out-Null
+              $bmp=New-Object Drawing.Bitmap ($r.R-$r.L),($r.B-$r.T);$g=[Drawing.Graphics]::FromImage($bmp);$g.CopyFromScreen($r.L,$r.T,0,0,$bmp.Size);$bmp.Save((Join-Path $PWD "installer-$mode.png"));$g.Dispose();$bmp.Dispose()
+            } finally {
+              Get-Process | Where-Object {$_.ProcessName -like '*Setup*'} | Stop-Process -Force -ErrorAction SilentlyContinue
+              foreach($name in $moved){Rename-Item (Join-Path $root ('hidden-'+$name)) $name}
+            }
+          }
       - uses: actions/upload-artifact@v4
         with:
-          name: distribution
-          path: |
-            FluentVantageToolbar-portable-x64.zip
-            installers/*.exe
+          name: installer-verified-pixels
+          path: installer-*.png
