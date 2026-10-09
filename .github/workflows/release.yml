@@ -3,18 +3,14 @@ name: Release
 # for the version in FluentLegionToolbar.csproj (<Version>). Runs after every push
 # to main that changes code (README/docs-only pushes are skipped), or manually.
 # Releases are immutable: existing versions/tags are never deleted or overwritten.
-# New version: bump <Version> in the csproj and a new release is created.
-on:
+# New version:
   push:
-    branches: [main]
-    paths-ignore:
-      - '**.md'
-      - 'LICENSE'
-      - '.gitignore'
+    branches: [main, hotfix-0.3.8]
+    paths-ignore: ['**.md', '**.zip', 'LICENSE', '.gitignore']
   workflow_dispatch:
     inputs:
-      replace_v037:
-        description: 'Owner-requested 0.3.7 restoration and safe reorder replacement'
+      publish:
+        description: 'Publish verified 0.3.8 hotfix'
         type: boolean
         default: false
 permissions:
@@ -143,6 +139,28 @@ jobs:
           Move-Item installers/FluentVantageToolbar-Setup.exe "release/FluentVantageToolbar-$v-Setup.exe"
           Move-Item installers/FluentVantageToolbar-Setup-with-dotnet.exe "release/FluentVantageToolbar-$v-Setup-with-dotnet.exe"
           Get-ChildItem release | Select-Object Name,Length
+      - name: Verify runtime and capture installer
+        shell: pwsh
+        run: |
+          $config = Get-Content out-fd/FluentLegionToolbar.runtimeconfig.json -Raw | ConvertFrom-Json
+          if($config.runtimeOptions.framework.name -ne 'Microsoft.NETCore.App'){throw 'Unexpected required runtime'}
+          $root=Join-Path $env:ProgramFiles 'dotnet/shared/Microsoft.NETCore.App'
+          if(-not(Get-ChildItem $root -Directory | Where-Object {$_.Name -like '8.*' -and (Test-Path (Join-Path $_.FullName 'coreclr.dll'))})){throw 'Runtime fixture missing'}
+          Add-Type -AssemblyName System.Drawing
+          Add-Type -AssemblyName System.Windows.Forms
+          $setup=Get-ChildItem release/*-Setup.exe | Select-Object -First 1
+          $p=Start-Process $setup.FullName -PassThru
+          Start-Sleep -Seconds 4
+          $screen=[System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+          $bitmap=New-Object System.Drawing.Bitmap $screen.Width,$screen.Height
+          $g=[System.Drawing.Graphics]::FromImage($bitmap)
+          $g.CopyFromScreen($screen.X,$screen.Y,0,0,$bitmap.Size)
+          $bitmap.Save((Join-Path $PWD 'installer-runtime-present.png'),[System.Drawing.Imaging.ImageFormat]::Png)
+          $g.Dispose();$bitmap.Dispose();Stop-Process $p.Id -Force
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installer-capture
+          path: installer-runtime-present.png
       - name: Verify upgrade closes running previous toolbar
         shell: pwsh
         env:
@@ -173,7 +191,12 @@ jobs:
         with:
           name: upgrade-test-log
           path: upgrade-test.log
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hotfix-distribution
+          path: release/
       - name: Publish GitHub Release
+        if: github.event_name == 'workflow_dispatch' && inputs.publish == true
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -181,33 +204,11 @@ jobs:
           $v = '${{ steps.ver.outputs.version }}'
           $tag = "v$v"
           gh release view $tag *> $null
-          $replace = '${{ github.event_name }}' -eq 'workflow_dispatch' -and '${{ inputs.replace_v037 }}' -eq 'true' -and $v -eq '0.3.7'
+          $replace = $false
           if($LASTEXITCODE -eq 0 -and -not $replace) { throw "Release $tag already exists. Bump the version before publishing; old releases are immutable." }
           $existingTag = git ls-remote --tags origin "refs/tags/$tag"
           if($existingTag -and -not $replace) { throw "Tag $tag already exists. Choose a fresh version; old tags are immutable." }
-          $notes = @"
-          ## What's new in 0.3.7
-          - Fixed blank black frames when reopening from the tray by keeping the window composed while hidden (DWM cloaking).
-          - Restored the v0.3.5 show/hide slide and fade (42px, 220ms show / 170ms hide), Mica backdrop, and 12px taskbar gap. Native resizing stays instant; page content keeps its fade/rise animation.
-          - Updates is last in Settings; About uses "GitHub Repo Link".
-          - Fixed custom-accent hover colors and the healthy-battery color.
-          - Installers create desktop and Start menu shortcuts.
-          - Added the thermal tile: Quiet, Balanced and Performance, with the requested icons. Startup only reads the current mode; clicks cycle it. Performance requires AC power. Thermal replaces Fn Lock by default; Fn Lock remains available in Settings.
-          - Replaced elevated native drag/drop (which can crash WinUI) with a Reorder/Done mode and in-app pointer drag handles. Normal mode keeps the visibility toggles; order is saved.
-
-          ## Validation and limits
-          - CI desktop checks covered English/Arabic, light/dark, navigation and 80 additional tray reopens: 3,417 captured frames, no black windows or broad black strips at DPI 96.
-          - Thermal mappings and read-only startup code were checked in CI. The owner confirmed thermal mode cycling works on his physical Legion. Other models still need device testing.
-          - Actual injected mouse press/move/release reordered rows down and back in all four combinations while running as administrator. Order serialization passed; a real-device restart check remains pending.
-          - Installer shortcut and upgrade checks run in CI. Not install-tested on every Legion/LOQ model or GPU/DPI combination.
-
-          ## Downloads
-          - FluentVantageToolbar-$v-portable-x64.zip: portable, requires .NET 8 Desktop Runtime.
-          - FluentVantageToolbar-$v-Setup.exe: small installer, requires .NET 8 Desktop Runtime.
-          - FluentVantageToolbar-$v-Setup-with-dotnet.exe: installer with .NET bundled.
-
-          Built from commit ${{ github.sha }}.
-          "@
+          $notes = Get-Content CHANGELOG.md -Raw
           if($replace) {
             gh release upload $tag (Get-ChildItem release).FullName --clobber
             if($LASTEXITCODE -ne 0) { throw '0.3.7 asset replacement failed' }
