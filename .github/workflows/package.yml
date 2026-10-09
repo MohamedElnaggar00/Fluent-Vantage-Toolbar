@@ -32,6 +32,7 @@ jobs:
           [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
           [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h,int n);
           [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h,out Rect r);
+          [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr h,IntPtr z,int x,int y,int w,int t,uint f);
           [StructLayout(LayoutKind.Sequential)] public struct Rect{public int L,T,R,B;}
           }
           '@
@@ -46,9 +47,11 @@ jobs:
               $script:handles=@()
               [CaptureSetup]::EnumWindows({param($h,$l) $owner=0;[CaptureSetup]::GetWindowThreadProcessId($h,[ref]$owner)|Out-Null;if([CaptureSetup]::IsWindowVisible($h)){ $proc=Get-Process -Id $owner -ErrorAction SilentlyContinue;if($proc -and $proc.ProcessName -like '*Setup*'){$script:handles+=$h}};return $true},[IntPtr]::Zero)|Out-Null
               if(-not $handles){throw 'Installer window not found'}
-              $h=$handles[-1];[CaptureSetup]::ShowWindow($h,9)|Out-Null;[CaptureSetup]::SetForegroundWindow($h)|Out-Null
+              $h=[IntPtr]::Zero
+              foreach($candidate in $handles){$rect=New-Object CaptureSetup+Rect;if([CaptureSetup]::GetWindowRect([IntPtr]$candidate,[ref]$rect) -and ($rect.R-$rect.L) -gt 100 -and ($rect.B-$rect.T) -gt 100){$h=[IntPtr]$candidate;$r=$rect}}
+              if($h -eq [IntPtr]::Zero){throw 'No sized installer window found'}
+              [CaptureSetup]::ShowWindow($h,9)|Out-Null;[CaptureSetup]::SetWindowPos($h,[IntPtr](-1),0,0,0,0,0x0043)|Out-Null;[CaptureSetup]::SetForegroundWindow($h)|Out-Null
               Start-Sleep -Seconds 1
-              $r=New-Object CaptureSetup+Rect;[CaptureSetup]::GetWindowRect($h,[ref]$r)|Out-Null
               $bmp=New-Object Drawing.Bitmap ($r.R-$r.L),($r.B-$r.T);$g=[Drawing.Graphics]::FromImage($bmp);$g.CopyFromScreen($r.L,$r.T,0,0,$bmp.Size);$bmp.Save((Join-Path $PWD "installer-$mode.png"));$g.Dispose();$bmp.Dispose()
             } finally {
               Get-Process | Where-Object {$_.ProcessName -like '*Setup*'} | Stop-Process -Force -ErrorAction SilentlyContinue
