@@ -5,17 +5,41 @@ permissions:
 jobs:
   import:
     runs-on: windows-latest
-    if: github.ref == 'refs/heads/hotfix-0.3.8' && contains(github.event.head_commit.message, 'Import source')
+    if: contains(github.event.head_commit.message, 'Import source')
     steps:
       - uses: actions/checkout@v4
       - shell: pwsh
         run: |
-          $zip=Get-ChildItem *legion-source.zip | Sort-Object Name | Select-Object -Last 1
+          $zip=Get-ChildItem *legion-source.zip | Select-Object -First 1
           if(-not $zip) { throw 'No source bundle' }
           Expand-Archive $zip.FullName -DestinationPath . -Force
-          Remove-Item *legion-source.zip
+          Remove-Item $zip.FullName
           git config user.name 'Mohamed Elnaggar'
           git config user.email 'MohamedElnaggar00@users.noreply.github.com'
           git add .
           git commit -m 'Unpack private WinUI source'
           git push
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - shell: pwsh
+        run: |
+          dotnet publish -c Release -r win-x64 --self-contained false -o out
+          if($LASTEXITCODE -ne 0) { throw 'Build failed' }
+          foreach($language in @('english','arabic')) {
+            foreach($theme in @('light','dark')) {
+              $arguments=@('--capture',(Join-Path $PWD "$language-$theme.png"),"--$theme")
+              if($language -eq 'arabic') { $arguments += '--arabic' }
+              $p=Start-Process .\out\FluentLegionToolbar.exe -ArgumentList $arguments -PassThru
+              if(-not $p.WaitForExit(90000)) { Stop-Process $p.Id -Force; throw 'Capture timeout' }
+              if($p.ExitCode -ne 0 -or -not (Test-Path "$language-$theme.png")) { throw 'Capture failed' }
+            }
+          }
+          Compress-Archive out/* Fluent-Legion-toolbar-runtime-dependent.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: private-test-build-and-captures
+          path: |
+            Fluent-Legion-toolbar-runtime-dependent.zip
+            *-light.png
+            *-dark.png
