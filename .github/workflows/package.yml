@@ -62,3 +62,10 @@ jobs:
         with:
           name: installer-verified-pixels
           path: installer-*.png
+      - name: Attach verified distribution to draft
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload v0.3.8 (Get-ChildItem release).FullName
+          if($LASTEXITCODE -ne 0){throw 'Draft asset upload failed'}
