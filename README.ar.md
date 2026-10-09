@@ -8,21 +8,16 @@
   <img src="1-2-hero-light-dark-5ea42c74.jpg" width="1000" alt="اللوحة الرئيسية بالسمتين الداكنة والفاتحة مع البطارية والوضع الحراري المتوازن">
 </p>
 
-<p align="center">
-  <img src="2-4-settings-accent-ade6f352.jpg" width="420" alt="إعدادات اللغة والسمة ولون التطبيق">
-</p>
-
-<p align="center">
-  <img src="3-5-battery-details-27c90952.jpg" width="420" alt="تفاصيل البطارية والسعة والصحة">
-</p>
-
-<p align="center">
-  <img src="4-6-device-details-0141a8cf.jpg" width="420" alt="معلومات المعالج والرسوميات">
-</p>
-
-<p align="center">
-  <img src="5-7-reorder-controls-5df4fea4.jpg" width="420" alt="ترتيب الأزرار بمقابض السحب وزر تم">
-</p>
+<table>
+  <tr>
+    <td align="center" width="50%"><img src="2-4-settings-accent-ade6f352.jpg" width="420" alt="إعدادات اللغة والسمة ولون التطبيق"></td>
+    <td align="center" width="50%"><img src="3-5-battery-details-27c90952.jpg" width="420" alt="تفاصيل البطارية والسعة والصحة"></td>
+  </tr>
+  <tr>
+    <td align="center" width="50%"><img src="4-6-device-details-0141a8cf.jpg" width="420" alt="معلومات المعالج والرسوميات"></td>
+    <td align="center" width="50%"><img src="5-7-reorder-controls-5df4fea4.jpg" width="420" alt="ترتيب الأزرار بمقابض السحب وزر تم"></td>
+  </tr>
+</table>
 
 ## حالة المشروع
 نسخة أولية خاصة للتجربة. نجح بناء Windows وتشغيل أربع معاينات WinUI (عربي/إنجليزي وفاتح/داكن)، وتم فحص الصور وإصلاح قص الاتجاه العربي والتباين. لا يوجد إصدار عام. لم يُختبر التحكم على اللابتوب الفعلي بعد، ولا تثبت المعاينات ظهور Mica على سطح المكتب.
