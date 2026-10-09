@@ -1,9 +1,5 @@
 name: Release
-# Builds the three distribution flavors and publishes them to the GitHub Release
-# for the version in FluentLegionToolbar.csproj (<Version>). Runs after every push
-# to main that changes code (README/docs-only pushes are skipped), or manually.
-# Releases are immutable: existing versions/tags are never deleted or overwritten.
-# New version:
+on:
   push:
     branches: [main, hotfix-0.3.8]
     paths-ignore: ['**.md', '**.zip', 'LICENSE', '.gitignore']
