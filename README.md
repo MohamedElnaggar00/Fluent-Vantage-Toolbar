@@ -8,7 +8,7 @@ A small Windows 11-style toolbar for Lenovo **Legion** and **LOQ** laptops.
 [**Download**](../../releases) · [Features](#features) · [Screenshots](#screenshots) · [Compatibility](#compatibility) · [Installation](#installation) · [العربية](README.ar.md)
 
 **Developed by Mohamed Elnaggar**  
-*brought to you by app.instinct AI*
+[*brought to you by Instinct*](https://instinct.com)
 
 </div>
 
