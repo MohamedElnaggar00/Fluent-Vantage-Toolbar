@@ -35,21 +35,16 @@ Independent project, not an official Lenovo product or a replacement for the ful
 
 ## Screenshots
 
-<p align="center">
-  <img src="2-4-settings-accent-ade6f352.jpg" width="420" alt="Language, theme and accent settings">
-</p>
-
-<p align="center">
-  <img src="3-5-battery-details-27c90952.jpg" width="420" alt="Battery capacity and health details">
-</p>
-
-<p align="center">
-  <img src="4-6-device-details-0141a8cf.jpg" width="420" alt="CPU and GPU device information">
-</p>
-
-<p align="center">
-  <img src="5-7-reorder-controls-5df4fea4.jpg" width="420" alt="Button ordering with drag handles and Done">
-</p>
+<table>
+  <tr>
+    <td align="center" width="50%"><img src="2-4-settings-accent-ade6f352.jpg" width="420" alt="Language, theme and accent settings"></td>
+    <td align="center" width="50%"><img src="3-5-battery-details-27c90952.jpg" width="420" alt="Battery capacity and health details"></td>
+  </tr>
+  <tr>
+    <td align="center" width="50%"><img src="4-6-device-details-0141a8cf.jpg" width="420" alt="CPU and GPU device information"></td>
+    <td align="center" width="50%"><img src="5-7-reorder-controls-5df4fea4.jpg" width="420" alt="Button ordering with drag handles and Done"></td>
+  </tr>
+</table>
 
 *Screenshots supplied by the developer from his Legion 5 15ITH6H.*
 
