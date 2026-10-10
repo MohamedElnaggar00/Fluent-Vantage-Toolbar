@@ -1,9 +1,11 @@
-## 0.3.8
-
-### التغييرات
-- إصلاح التحقق من وجود بيئة تشغيل .NET 8 ‏(x64) في المثبّت، لتجنّب التحذير الخاطئ عند تثبيتها بالفعل.
-- اعتماد اللون الافتراضي #00A6A6 للواجهة مع إبقاء لون البطارية الأخضر وألوان التحذير دون تغيير، والحفاظ على الألوان المخصّصة المحفوظة.
+## 0.3.9
 
 ### Changes
-- Fixed .NET 8 (x64) runtime detection in the installer to avoid false missing-runtime warnings.
-- Set the default UI accent to #00A6A6 while keeping the battery's green and warning colors and preserving saved custom accent choices.
+- Show manual update-check results inline, including checking, up-to-date, available-update and connection-error states.
+- Share update status between Settings and About, with a download link shown only when a newer release is available.
+- Correct Arabic update-control alignment.
+
+### التغييرات
+- عرض نتائج التحقق اليدوي من التحديثات داخل الواجهة، بما يشمل التحقق، وأحدث إصدار، وتوفر تحديث، وأخطاء الاتصال.
+- مشاركة حالة التحديث بين الإعدادات وصفحة حول، وإظهار رابط التنزيل عند توفر إصدار أحدث فقط.
+- تصحيح محاذاة عناصر التحديث في الواجهة العربية.
