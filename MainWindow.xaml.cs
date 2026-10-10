@@ -790,10 +790,10 @@ public sealed partial class MainWindow : Window
         stack.Children.Add(Text(L.Ar ? "التحديثات" : "Updates",16,true));
         stack.Children.Add(Text(L.Ar ? "اضغط الزر للتحقق من التحديثات الآن." : "Press the button to check for updates now.",13,false,SecondaryText));
         stack.Children.Add(Text((L.Ar ? "الإصدار الحالي: " : "Current version: ")+"v"+(typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? "0.0.0"),13,false,SecondaryText));
-        var button=new Button { Content=UpdateLabel, IsEnabled=!checkingUpdates, HorizontalAlignment=L.Ar ? HorizontalAlignment.Right : HorizontalAlignment.Left };
+        var button=new Button { Content=UpdateLabel, IsEnabled=!checkingUpdates, HorizontalAlignment=HorizontalAlignment.Left };
         button.Click+=async (_,_)=>await CheckForUpdatesAsync();updateButtons.Add(button);stack.Children.Add(button);
         var result=Text("",13);result.TextWrapping=TextWrapping.Wrap;updateResults.Add(result);stack.Children.Add(result);
-        var link=new HyperlinkButton { Content=L.Ar ? "فتح صفحة التنزيل" : "Open download page", HorizontalAlignment=L.Ar ? HorizontalAlignment.Right : HorizontalAlignment.Left };
+        var link=new HyperlinkButton { Content=L.Ar ? "فتح صفحة التنزيل" : "Open download page", HorizontalAlignment=HorizontalAlignment.Left };
         updateLinks.Add(link);stack.Children.Add(link);RefreshUpdateCards();
         return Card(stack,new Thickness(24));
     }
@@ -1179,6 +1179,13 @@ public sealed partial class MainWindow : Window
         current = new DeviceState(60, true, false, ChargeMode.Conservation, false, false, "Visual fixture", [], true, 2, 165, [60, 165],ThermalMode.Balanced);
         batteryDetails = new BatteryDetails(99.9, 60.0, 59.9, 36, new DateTime(2022, 1, 22), []);
         warranty = new WarrantyResult(new DateTime(2022, 7, 29), new DateTime(2023, 7, 28), null);
+        if(args.Contains("--updates-only")) {
+            int stateIndex=Array.IndexOf(args,"--update-state");manualUpdateState=args[stateIndex+1];checkingUpdates=manualUpdateState=="checking";
+            manualUpdateVersion="v9.0.0";manualUpdateUrl=manualUpdateState=="available" ? "https://github.com/MohamedElnaggar00/Fluent-Vantage-Toolbar/releases/latest" : null;
+            view=args.Contains("--updates-settings") ? "settings" : "about";Render();await geometryReady;
+            if(body.Content is ScrollViewer updateScroll)updateScroll.ChangeView(null,updateScroll.ScrollableHeight,null,true);
+            await Task.Delay(700);File.WriteAllText(path+".ready","ready");await Task.Delay(60000);Close();return;
+        }
         foreach (var target in new[] { "main", "settings", "battery", "warranty", "about" })
         {
             view = target; Render(); await geometryReady;
@@ -1189,7 +1196,9 @@ public sealed partial class MainWindow : Window
         foreach(var state in new[] { "current", "available", "checking", "error" }) {
             manualUpdateState=state;checkingUpdates=state=="checking";manualUpdateVersion="v9.0.0";
             manualUpdateUrl=state=="available" ? "https://github.com/MohamedElnaggar00/Fluent-Vantage-Toolbar/releases/latest" : null;
-            view="about";Render();await geometryReady;await Task.Delay(500);
+            view="about";Render();await geometryReady;
+            if(body.Content is ScrollViewer updateScroll)updateScroll.ChangeView(null,updateScroll.ScrollableHeight,null,true);
+            await Task.Delay(500);
             await SaveImage(Path.Combine(dir,"updates-"+state+"-"+name));
         }
         checkingUpdates=false;manualUpdateState="idle";manualUpdateUrl=null;
