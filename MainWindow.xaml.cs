@@ -784,18 +784,18 @@ public sealed partial class MainWindow : Window
     void OpenDashboard(){dashboard=new DeviceDashboardWindow(settings.Theme,current,preview);Navigate("device");}
 
     string UpdateLabel => L.Ar ? "التحقق من التحديثات" : "Check for updates";
-    UIElement UpdateCard()
+    UIElement UpdateCard(bool compact = false)
     {
         var stack = new StackPanel { Spacing=8, HorizontalAlignment=HorizontalAlignment.Stretch };
-        stack.Children.Add(Text(L.Ar ? "التحديثات" : "Updates",16,true));
-        stack.Children.Add(Text(L.Ar ? "اضغط الزر للتحقق من التحديثات الآن." : "Press the button to check for updates now.",13,false,SecondaryText));
-        stack.Children.Add(Text((L.Ar ? "الإصدار الحالي: " : "Current version: ")+"v"+(typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? "0.0.0"),13,false,SecondaryText));
-        var button=new Button { Content=UpdateLabel, IsEnabled=!checkingUpdates, HorizontalAlignment=HorizontalAlignment.Left };
+        if(!compact) stack.Children.Add(Text(L.Ar ? "التحديثات" : "Updates",16,true));
+        if(!compact) stack.Children.Add(Text(L.Ar ? "اضغط الزر للتحقق من التحديثات الآن." : "Press the button to check for updates now.",13,false,SecondaryText));
+        if(!compact) stack.Children.Add(Text((L.Ar ? "الإصدار الحالي: " : "Current version: ")+"v"+(typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? "0.0.0"),13,false,SecondaryText));
+        var button=new Button { Content=UpdateLabel, IsEnabled=!checkingUpdates, HorizontalAlignment=compact ? HorizontalAlignment.Stretch : HorizontalAlignment.Left };
         button.Click+=async (_,_)=>await CheckForUpdatesAsync();updateButtons.Add(button);stack.Children.Add(button);
-        var result=Text("",13);result.TextWrapping=TextWrapping.Wrap;updateResults.Add(result);stack.Children.Add(result);
-        var link=new HyperlinkButton { Content=L.Ar ? "فتح صفحة التنزيل" : "Open download page", HorizontalAlignment=HorizontalAlignment.Left };
+        var result=Text("",13);result.TextWrapping=TextWrapping.Wrap;if(compact) result.TextAlignment=TextAlignment.Center;updateResults.Add(result);stack.Children.Add(result);
+        var link=new HyperlinkButton { Content=L.Ar ? "فتح صفحة التنزيل" : "Open download page", HorizontalAlignment=compact ? HorizontalAlignment.Center : HorizontalAlignment.Left };
         updateLinks.Add(link);stack.Children.Add(link);RefreshUpdateCards();
-        return Card(stack,new Thickness(24));
+        return compact ? stack : Card(stack,new Thickness(24));
     }
     void RefreshUpdateCards()
     {
@@ -1021,7 +1021,7 @@ public sealed partial class MainWindow : Window
         var note = Text(L.T("about.note"), 12, false, SecondaryText); note.TextAlignment = TextAlignment.Center; note.Margin = new Thickness(8, 12, 8, 0); stack.Children.Add(note);
         var repo=new HyperlinkButton { Content="GitHub Repo Link",NavigateUri=new Uri("https://github.com/MohamedElnaggar00/Fluent-Vantage-Toolbar"),HorizontalAlignment=HorizontalAlignment.Center };
         stack.Children.Add(repo);
-        stack.Children.Add(UpdateCard());
+        stack.Children.Add(UpdateCard(true));
         return new ScrollViewer { Content=stack, VerticalScrollBarVisibility=ScrollBarVisibility.Auto };
     }
 
@@ -1183,7 +1183,7 @@ public sealed partial class MainWindow : Window
             int stateIndex=Array.IndexOf(args,"--update-state");manualUpdateState=args[stateIndex+1];checkingUpdates=manualUpdateState=="checking";
             manualUpdateVersion="v9.0.0";manualUpdateUrl=manualUpdateState=="available" ? "https://github.com/MohamedElnaggar00/Fluent-Vantage-Toolbar/releases/latest" : null;
             view=args.Contains("--updates-settings") ? "settings" : "about";Render();await geometryReady;
-            if(body.Content is ScrollViewer updateScroll)updateScroll.ChangeView(null,updateScroll.ScrollableHeight,null,true);
+            if(body.Content is ScrollViewer updateScroll)updateScroll.ChangeView(null,args.Contains("--updates-top") ? 0 : updateScroll.ScrollableHeight,null,true);
             await Task.Delay(700);File.WriteAllText(path+".ready","ready");await Task.Delay(60000);Close();return;
         }
         foreach (var target in new[] { "main", "settings", "battery", "warranty", "about" })
