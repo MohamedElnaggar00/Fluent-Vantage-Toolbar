@@ -67,12 +67,13 @@ jobs:
         run: |
           Add-Type -AssemblyName System.Drawing, System.Windows.Forms
           New-Item -ItemType Directory -Force update-desktop | Out-Null
-          foreach($language in @('english','arabic')) { foreach($theme in @('light','dark')) { foreach($state in @('current','available','checking','error')) { foreach($page in @('about','settings')) {
+          foreach($language in @('english','arabic')) { foreach($theme in @('light','dark')) { foreach($state in @('current','available','checking','error')) { foreach($page in @('about','about-top','settings')) {
             $name="$language-$theme-$state-$page"
             $path=Join-Path $PWD "update-desktop/$name.png"
             $arguments=@('--capture',$path,'--updates-only','--update-state',$state,"--$theme")
             if($language -eq 'arabic'){$arguments+='--arabic'}
             if($page -eq 'settings'){$arguments+='--updates-settings'}
+            if($page -eq 'about-top'){$arguments+='--updates-top'}
             $p=Start-Process .\out\FluentLegionToolbar.exe -ArgumentList $arguments -PassThru
             $clock=[Diagnostics.Stopwatch]::StartNew()
             while(-not(Test-Path "$path.ready") -and -not $p.HasExited -and $clock.Elapsed.TotalSeconds -lt 30){Start-Sleep -Milliseconds 200;$p.Refresh()}
