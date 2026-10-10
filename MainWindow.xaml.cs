@@ -43,6 +43,10 @@ public sealed partial class MainWindow : Window
     bool warrantyLoading;
     bool busy, dialogOpen, exiting, checkingUpdates;
     readonly List<Button> updateButtons = new();
+    readonly List<TextBlock> updateResults = new();
+    readonly List<HyperlinkButton> updateLinks = new();
+    string manualUpdateState = "idle";
+    string? manualUpdateUrl, manualUpdateVersion;
     readonly CancellationTokenSource updateLifetime=new();
     UpdateNoticeWindow? updateNotice;
     bool flyoutVisible, showingFlyout, reorderMode, reordering;
@@ -484,7 +488,7 @@ public sealed partial class MainWindow : Window
         var close = IconButton("\uE8BB", L.Ar ? "إغلاق النافذة" : "Close window", HideFlyout);
         Grid.SetColumn(close, 3); titleBar.Children.Add(close);
         PositionTitleBar();
-        tileButtons.Clear();updateButtons.Clear();
+        tileButtons.Clear();updateButtons.Clear();updateResults.Clear();updateLinks.Clear();
         body.Content = view switch { "settings" => BuildSettings(), "about" => BuildAbout(), "battery" => BuildBattery(), "warranty" => BuildWarranty(), "device" => dashboard ??= new DeviceDashboardWindow(settings.Theme,current,preview), _ => BuildMain() };
         if (view == "main") Apply();
         ResizeForContent();
@@ -780,10 +784,32 @@ public sealed partial class MainWindow : Window
     void OpenDashboard(){dashboard=new DeviceDashboardWindow(settings.Theme,current,preview);Navigate("device");}
 
     string UpdateLabel => L.Ar ? "التحقق من التحديثات" : "Check for updates";
-    Button UpdateButton()
+    UIElement UpdateCard()
     {
-        var button=new Button { Content=checkingUpdates ? (L.Ar ? "جارٍ التحقق..." : "Checking...") : UpdateLabel, IsEnabled=!checkingUpdates, HorizontalAlignment=HorizontalAlignment.Stretch };
-        button.Click+=async (_,_)=>await CheckForUpdatesAsync();updateButtons.Add(button);return button;
+        var stack = new StackPanel { Spacing=8, HorizontalAlignment=HorizontalAlignment.Stretch };
+        stack.Children.Add(Text(L.Ar ? "التحديثات" : "Updates",16,true));
+        stack.Children.Add(Text(L.Ar ? "اضغط الزر للتحقق من التحديثات الآن." : "Press the button to check for updates now.",13,false,SecondaryText));
+        stack.Children.Add(Text((L.Ar ? "الإصدار الحالي: " : "Current version: ")+"v"+(typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? "0.0.0"),13,false,SecondaryText));
+        var button=new Button { Content=UpdateLabel, IsEnabled=!checkingUpdates, HorizontalAlignment=L.Ar ? HorizontalAlignment.Right : HorizontalAlignment.Left };
+        button.Click+=async (_,_)=>await CheckForUpdatesAsync();updateButtons.Add(button);stack.Children.Add(button);
+        var result=Text("",13);result.TextWrapping=TextWrapping.Wrap;updateResults.Add(result);stack.Children.Add(result);
+        var link=new HyperlinkButton { Content=L.Ar ? "فتح صفحة التنزيل" : "Open download page", HorizontalAlignment=L.Ar ? HorizontalAlignment.Right : HorizontalAlignment.Left };
+        updateLinks.Add(link);stack.Children.Add(link);RefreshUpdateCards();
+        return Card(stack,new Thickness(24));
+    }
+    void RefreshUpdateCards()
+    {
+        string installed=typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? "0.0.0";
+        string result=manualUpdateState switch {
+            "checking" => L.Ar ? "جارٍ التحقق..." : "Checking...",
+            "available" => L.Ar ? "الإصدار "+manualUpdateVersion+" متاح." : "Version "+manualUpdateVersion+" is available.",
+            "current" => L.Ar ? "أنت على أحدث إصدار (v"+installed+")." : "You're up to date (v"+installed+").",
+            "error" => L.Ar ? "تعذر التحقق من التحديثات. تحقق من اتصالك بالإنترنت وحاول مرة أخرى." : "Couldn't check for updates. Check your internet connection and try again.",
+            _ => ""
+        };
+        foreach(var button in updateButtons){button.IsEnabled=!checkingUpdates;button.Content=UpdateLabel;}
+        foreach(var text in updateResults)text.Text=result;
+        foreach(var link in updateLinks){link.NavigateUri=manualUpdateUrl==null ? null : new Uri(manualUpdateUrl);link.Visibility=manualUpdateUrl==null ? Visibility.Collapsed : Visibility.Visible;}
     }
     static Version? ReleaseVersion(string? tag) => Version.TryParse(tag?.TrimStart('v','V'),out var version) ? version : null;
     static string? UpdateDownload(System.Text.Json.JsonElement release, Version installed,bool bundled=true)
@@ -847,8 +873,7 @@ public sealed partial class MainWindow : Window
     {
         if(checkingUpdates || preview)return;
         checkingUpdates=true;
-        foreach(var button in updateButtons){button.IsEnabled=false;button.Content=L.Ar ? "جارٍ التحقق..." : "Checking...";}
-        string message;
+        manualUpdateState="checking";manualUpdateUrl=null;RefreshUpdateCards();
         try {
             using var http=new System.Net.Http.HttpClient { Timeout=TimeSpan.FromSeconds(20) };
             http.DefaultRequestHeaders.UserAgent.ParseAdd("FluentVantageToolbar/"+(typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? "0.0.0"));
@@ -858,21 +883,15 @@ public sealed partial class MainWindow : Window
             using var json=System.Text.Json.JsonDocument.Parse(await response.Content.ReadAsStringAsync());
             var installed=ReleaseVersion(typeof(MainWindow).Assembly.GetName().Version?.ToString(3)) ?? new Version(0,0,0);
             var url=UpdateDownload(json.RootElement,installed,InstalledBundled);
-            if(url==null)message=L.Ar ? "أنت تستخدم أحدث إصدار." : "You're using the latest release.";
-            else {
-                Process.Start(new ProcessStartInfo(url){UseShellExecute=true});
-                message=L.Ar ? "تم فتح رابط تنزيل التحديث في المتصفح. بعد اكتمال التنزيل، شغّل المثبّت للتحديث." : "Opened the update download in your browser. When the download finishes, run the installer to update.";
-            }
+            manualUpdateUrl=url;
+            manualUpdateVersion=json.RootElement.GetProperty("tag_name").GetString();
+            manualUpdateState=url==null ? "current" : "available";
         } catch(Exception error) {
             DiagnosticLog.Write("Update check failed: "+error.Message);
-            message=L.Ar ? "تعذّر التحقق من التحديثات أو فتح التنزيل. تحقق من اتصال الإنترنت وحاول مجدداً." : "Couldn't check for updates or open the download. Check your internet connection and try again.";
+            manualUpdateState="error";
         } finally {
-            checkingUpdates=false;foreach(var button in updateButtons){button.IsEnabled=true;button.Content=UpdateLabel;}
+            checkingUpdates=false;if(!exiting)RefreshUpdateCards();
         }
-        if(exiting)return;
-        dialogOpen=true;
-        try { await new ContentDialog { XamlRoot=Root.XamlRoot,Title=UpdateLabel,Content=message,CloseButtonText=L.Ar ? "إغلاق" : "Close" }.ShowAsync(); }
-        finally {dialogOpen=false;}
     }
 
     // ---- settings ----
@@ -935,10 +954,10 @@ public sealed partial class MainWindow : Window
         var exit = new Button { Content = L.T("settings.exit"), HorizontalAlignment = HorizontalAlignment.Stretch, Margin = new Thickness(0, 6, 0, 0) };
         exit.Click += (_, _) => ExitApp();
         stack.Children.Add(exit);
-        stack.Children.Add(Text(L.Ar ? "التحديثات" : "Updates",14,true));
+
         stack.Children.Add(ToggleRow(L.Ar ? "البحث التلقائي عن التحديثات" : "Automatically check for updates",settings.AutoCheckUpdates,on=>{settings.AutoCheckUpdates=on;settings.Save();}));
         stack.Children.Add(Text(L.Ar ? "بعد 45 ثانية من التشغيل، ثم كل 6 ساعات. التنزيل والتثبيت بقرارك." : "45 seconds after launch, then every 6 hours. Download and install only when you choose.",12,false,SecondaryText));
-        stack.Children.Add(UpdateButton());
+        stack.Children.Add(UpdateCard());
         return new ScrollViewer { Content = stack, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Padding = new Thickness(0, 0, 12, 0) };
     }
 
@@ -1002,7 +1021,7 @@ public sealed partial class MainWindow : Window
         var note = Text(L.T("about.note"), 12, false, SecondaryText); note.TextAlignment = TextAlignment.Center; note.Margin = new Thickness(8, 12, 8, 0); stack.Children.Add(note);
         var repo=new HyperlinkButton { Content="GitHub Repo Link",NavigateUri=new Uri("https://github.com/MohamedElnaggar00/Fluent-Vantage-Toolbar"),HorizontalAlignment=HorizontalAlignment.Center };
         stack.Children.Add(repo);
-        stack.Children.Add(UpdateButton());
+        stack.Children.Add(UpdateCard());
         return new ScrollViewer { Content=stack, VerticalScrollBarVisibility=ScrollBarVisibility.Auto };
     }
 
@@ -1167,6 +1186,13 @@ public sealed partial class MainWindow : Window
             await Task.Delay(target == "main" ? 2500 : 1200);
             await SaveImage(target == "main" ? path : Path.Combine(dir, target + "-" + name));
         }
+        foreach(var state in new[] { "current", "available", "checking", "error" }) {
+            manualUpdateState=state;checkingUpdates=state=="checking";manualUpdateVersion="v9.0.0";
+            manualUpdateUrl=state=="available" ? "https://github.com/MohamedElnaggar00/Fluent-Vantage-Toolbar/releases/latest" : null;
+            view="about";Render();await geometryReady;await Task.Delay(500);
+            await SaveImage(Path.Combine(dir,"updates-"+state+"-"+name));
+        }
+        checkingUpdates=false;manualUpdateState="idle";manualUpdateUrl=null;
         // Verify dynamic height with a single tile row and then with no quick tiles.
         foreach (var count in new[] { 5, 0 }) {
             settings.HiddenTiles = Tiles.Skip(count).Select(t => t.Id).ToList();
