@@ -26,6 +26,14 @@ jobs:
         run: |
           msbuild FluentLegionToolbar.csproj /restore /t:Publish /p:Configuration=Release /p:Platform=x64 /p:RuntimeIdentifier=win-x64 /p:SelfContained=true /p:WindowsAppSDKSelfContained=true /p:WindowsAppSdkBootstrapInitialize=false /p:DebugType=none /p:Version=0.3.9 /p:PublishDir="$PWD/publish/"
           if ($LASTEXITCODE -ne 0) { throw 'App publish failed' }
+          $buildDir = Join-Path $PWD 'bin/x64/Release/net8.0-windows10.0.19041.0/win-x64'
+          Get-ChildItem $buildDir -Recurse -Include *.xbf,*.pri | ForEach-Object {
+            $relative = $_.FullName.Substring($buildDir.Length+1)
+            $destination = Join-Path (Join-Path $PWD 'publish') $relative
+            New-Item -ItemType Directory -Force (Split-Path $destination) | Out-Null
+            Copy-Item $_.FullName $destination -Force
+          }
+          if (-not (Test-Path publish/MainWindow.xbf)) { throw 'Compiled XAML missing' }
           # Ship Microsoft's app-local VC runtime rather than installing a machine-wide redistributable.
           $vs = & "${env:ProgramFiles(x86)}/Microsoft Visual Studio/Installer/vswhere.exe" -latest -property installationPath
           $crt = Get-ChildItem "$vs/VC/Redist/MSVC/*/x64/Microsoft.VC*.CRT" -Directory | Sort-Object FullName -Descending | Select-Object -First 1
@@ -47,7 +55,7 @@ jobs:
           New-Item -ItemType Directory -Force $env:DOTNET_ROOT | Out-Null
           $p = Start-Process "$PWD/publish/FluentLegionToolbar.exe" -ArgumentList '--no-elevate','--show' -PassThru
           Start-Sleep -Seconds 15
-          if ($p.HasExited) { throw "Self-contained launch failed: $($p.ExitCode)" }
+          if ($p.HasExited) { Get-Content publish/launch-error.txt -ErrorAction SilentlyContinue; throw "Bundled launch failed: $($p.ExitCode)" }
           $local = (Resolve-Path publish).Path
           $modules = @($p.Modules | Where-Object { $_.ModuleName -match '^(coreclr|Microsoft.WinUI|Microsoft.WindowsAppRuntime|hostfxr)\.dll$' })
           foreach ($name in @('coreclr.dll','Microsoft.WinUI.dll','Microsoft.WindowsAppRuntime.dll')) {
