@@ -28,10 +28,11 @@ jobs:
           $v = if ('${{ github.event_name }}' -eq 'workflow_dispatch') { '${{ inputs.version }}' } else { '${{ github.ref_name }}'.TrimStart('v') }
           if ($v -notmatch '^\d+\.\d+\.\d+$') { throw 'Invalid version' }
           "value=$v" >> $env:GITHUB_OUTPUT
+      - uses: microsoft/setup-msbuild@v2
       - name: Publish fully self-contained app
         shell: pwsh
         run: |
-          dotnet publish FluentLegionToolbar.csproj -c Release -r win-x64 -p:Platform=x64 --self-contained true -p:WindowsAppSDKSelfContained=true -p:WindowsAppSdkBootstrapInitialize=false -p:DebugType=none -p:Version=${{ steps.version.outputs.value }} -o publish
+          msbuild FluentLegionToolbar.csproj /restore /t:Publish /p:Configuration=Release /p:Platform=x64 /p:RuntimeIdentifier=win-x64 /p:SelfContained=true /p:WindowsAppSDKSelfContained=true /p:WindowsAppSdkBootstrapInitialize=false /p:DebugType=none /p:Version=${{ steps.version.outputs.value }} /p:PublishDir="$PWD/publish/"
           if ($LASTEXITCODE -ne 0) { throw 'App publish failed' }
           # Ship Microsoft's app-local VC runtime rather than installing a machine-wide redistributable.
           $vs = & "${env:ProgramFiles(x86)}/Microsoft Visual Studio/Installer/vswhere.exe" -latest -property installationPath
@@ -132,7 +133,8 @@ jobs:
           }
           @'
           Full offline kit
-          Run Install.exe to install the app without internet or administrator rights.
+          Run Install.exe to install the app without internet.
+          Administrator rights are required for toolbar installation and hardware/startup features.
           The app includes .NET, Windows App SDK and VC runtime files. No separate runtime installation is required.
           The runtimes folder additionally contains the original signed Microsoft offline installers for .NET Desktop Runtime 8, Windows App Runtime 1.6 and Visual C++ x64.
           These optional system installers can require administrator rights. They are not needed to run this app.
