@@ -143,3 +143,14 @@ The interface offers English, Arabic, French, German, Italian, Spanish, Portugue
 ## Credits
 
 LenovoLegionToolkit was used as a hardware-interface reference, not as copied implementation. Dashboard icons come from Microsoft's MIT-licensed [Fluent UI System Icons](https://github.com/microsoft/fluentui-system-icons); see [THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt). Lenovo, Legion, LOQ and Vantage are trademarks of their owners.
+
+
+## Download options
+
+Each release provides exactly three Windows x64 downloads:
+
+- **Portable ZIP:** extract all files and run the app.
+- **Installer:** installs the app with .NET, Windows App SDK and VC runtime files included.
+- **Full offline ZIP:** the same installer, named `Install.exe`, plus Microsoft's original offline installers for .NET Desktop Runtime, Windows App Runtime and Visual C++ x64.
+
+No separate runtime download is needed to run the app. The system-runtime installers in the full offline kit are optional. Keep every extracted portable file together.
