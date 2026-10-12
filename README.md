@@ -140,9 +140,14 @@ The interface offers English, Arabic, French, German, Italian, Spanish, Portugue
 - Unsupported or unreadable controls remain unavailable.
 - Competing hardware-control tools may interfere with each other.
 
+## Special Thank
+
+Special thank for [LenovoLegionToolkit LLT](https://github.com/LenovoLegionToolkit-Team/LenovoLegionToolkit) developers for implementation of the UI and hardware-interface reference codes. 
+
+
 ## Credits
 
-LenovoLegionToolkit was used as a hardware-interface reference, not as copied implementation. Dashboard icons come from Microsoft's MIT-licensed [Fluent UI System Icons](https://github.com/microsoft/fluentui-system-icons); see [THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt). Lenovo, Legion, LOQ and Vantage are trademarks of their owners.
+[LenovoLegionToolkit LLT](https://github.com/LenovoLegionToolkit-Team/LenovoLegionToolkit) was used as a hardware-interface reference, and design language reference. Dashboard icons come from Microsoft's MIT-licensed [Fluent UI System Icons](https://github.com/microsoft/fluentui-system-icons); see [THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt). Lenovo, Legion, LOQ and Vantage are trademarks of their owners.
 
 
 ## Download options
