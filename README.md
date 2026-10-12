@@ -142,7 +142,7 @@ The interface offers English, Arabic, French, German, Italian, Spanish, Portugue
 
 ## Special Thank
 
-Special thank for [LenovoLegionToolkit LLT](https://github.com/LenovoLegionToolkit-Team/LenovoLegionToolkit) developers for implementation of the UI and hardware-interface reference codes. 
+Special thank for [LenovoLegionToolkit LLT](https://github.com/LenovoLegionToolkit-Team/LenovoLegionToolkit) developers for the inspiration of the UI and hardware-interface reference codes. 
 
 
 ## Credits
