@@ -2,6 +2,7 @@
 
 ### Changes
 - Fix "Check for updates" failing with a connection error even when the internet works. The updater now recognizes the current release file names.
+- Add the battery green (#9CDA9B) as an accent color option.
 
 ## 0.3.10
 
