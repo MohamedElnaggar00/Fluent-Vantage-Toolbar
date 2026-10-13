@@ -527,9 +527,15 @@ public sealed partial class MainWindow : Window
             if(generation!=geometryGeneration)return;
             Root.UpdateLayout();
             double scale=Math.Max(1,GetDpiForWindow(hwnd)/96d);
-            if(double.IsNaN(frameHeightPixels)) {
-                frameWidthPixels=AppWindow.Size.Width-Root.ActualWidth*scale;
-                frameHeightPixels=AppWindow.Size.Height-Root.ActualHeight*scale;
+            {
+                // Window chrome is outer size minus client size. Never derive it from Root.ActualWidth:
+                // at logon the cloaked window may not be laid out yet (ActualWidth 0), which made the "frame"
+                // equal to the whole window and doubled the size to full screen.
+                var outer=AppWindow.Size;var client=AppWindow.ClientSize;
+                double fw=outer.Width-client.Width,fh=outer.Height-client.Height;
+                double limit=48*scale;
+                frameWidthPixels=(fw>=0&&fw<=limit)?fw:0;
+                frameHeightPixels=(fh>=0&&fh<=limit)?fh:0;
             }
             canvas.Height=double.NaN;
             canvas.RowDefinitions[1].Height=view=="main"?GridLength.Auto:new GridLength(1,GridUnitType.Star);
@@ -546,6 +552,7 @@ public sealed partial class MainWindow : Window
             var work=DisplayArea.GetFromWindowId(AppWindow.Id,DisplayAreaFallback.Nearest).WorkArea;
             wanted=Math.Min(wanted,work.Height/scale-16);
             var desired=new SizeInt32((int)Math.Round(520*scale+frameWidthPixels),(int)Math.Round(wanted*scale+frameHeightPixels));
+            desired=new SizeInt32(Math.Min(desired.Width,(int)Math.Round(520*scale+48*scale)),Math.Min(desired.Height,work.Height));
             {
                 if(AppWindow.Size.Width!=desired.Width || AppWindow.Size.Height!=desired.Height) {
                     AppWindow.Resize(desired);nativeResizeCount++;
