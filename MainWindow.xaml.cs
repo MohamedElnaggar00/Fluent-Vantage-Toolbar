@@ -826,7 +826,7 @@ public sealed partial class MainWindow : Window
         if(next==null || next<=installed)return null;
         foreach(var asset in release.GetProperty("assets").EnumerateArray()) {
             var name=asset.GetProperty("name").GetString();
-            if(name!=$"FluentVantageToolbar-{next.ToString(3)}-Setup{(bundled ? "-with-dotnet" : "")}.exe")continue;
+            if(name!=$"FluentVantageToolbar-v{next.ToString(3)}-installer-win-x64.exe")continue;
             var url=asset.GetProperty("browser_download_url").GetString();
             if(Uri.TryCreate(url,UriKind.Absolute,out var uri) && uri.Scheme=="https" && uri.Host=="github.com" && uri.AbsolutePath.StartsWith("/MohamedElnaggar00/Fluent-Vantage-Toolbar/releases/download/",StringComparison.Ordinal))return url;
         }
@@ -1165,11 +1165,11 @@ public sealed partial class MainWindow : Window
     {
         // Offline decision tests never download or launch an installer during captures.
         string fixture="""
-        {"draft":false,"prerelease":false,"tag_name":"v9.0.0","assets":[{"name":"FluentVantageToolbar-9.0.0-Setup.exe","browser_download_url":"https://github.com/MohamedElnaggar00/Fluent-Vantage-Toolbar/releases/download/v9.0.0/FluentVantageToolbar-9.0.0-Setup.exe"},{"name":"FluentVantageToolbar-9.0.0-Setup-with-dotnet.exe","browser_download_url":"https://github.com/MohamedElnaggar00/Fluent-Vantage-Toolbar/releases/download/v9.0.0/FluentVantageToolbar-9.0.0-Setup-with-dotnet.exe"}]}
+        {"draft":false,"prerelease":false,"tag_name":"v9.0.0","assets":[{"name":"FluentVantageToolbar-v9.0.0-installer-win-x64.exe","browser_download_url":"https://github.com/MohamedElnaggar00/Fluent-Vantage-Toolbar/releases/download/v9.0.0/FluentVantageToolbar-v9.0.0-installer-win-x64.exe"}]}
         """;
         using(var test=System.Text.Json.JsonDocument.Parse(fixture)) {
             if(UpdateDownload(test.RootElement,new Version(1,0,0))==null || UpdateDownload(test.RootElement,new Version(9,0,0))!=null || UpdateDownload(test.RootElement,new Version(10,0,0))!=null)throw new InvalidOperationException("Update version comparison failed");
-            if(!UpdateDownload(test.RootElement,new Version(1,0,0),false)!.EndsWith("-Setup.exe") || !UpdateDownload(test.RootElement,new Version(1,0,0),true)!.EndsWith("-Setup-with-dotnet.exe"))throw new InvalidOperationException("Installed update flavor mismatch");
+            if(!UpdateDownload(test.RootElement,new Version(1,0,0),false)!.EndsWith("-installer-win-x64.exe") || !UpdateDownload(test.RootElement,new Version(1,0,0),true)!.EndsWith("-installer-win-x64.exe"))throw new InvalidOperationException("Installed update flavor mismatch");
             if(!new AppSettings().AutoCheckUpdates)throw new InvalidOperationException("Automatic updates must default on");
         }
         foreach(var replacement in new[]{fixture.Replace("\"draft\":false","\"draft\":true"),fixture.Replace("\"prerelease\":false","\"prerelease\":true")}) {
