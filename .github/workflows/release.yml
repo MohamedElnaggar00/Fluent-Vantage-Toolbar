@@ -175,6 +175,11 @@ jobs:
           if ($LASTEXITCODE -ne 0) { gh release create v${{ steps.version.outputs.value }} --draft --title 'v${{ steps.version.outputs.value }}' --notes-file CHANGELOG.md }
           gh release upload v${{ steps.version.outputs.value }} './FluentVantageToolbar-v${{ steps.version.outputs.value }}-portable-win-x64.zip' './FluentVantageToolbar-v${{ steps.version.outputs.value }}-installer-win-x64.exe' './FluentVantageToolbar-v${{ steps.version.outputs.value }}-full-offline-win-x64.zip'
           if ($LASTEXITCODE -ne 0) { throw 'Upload failed; existing assets were not replaced' }
+          if ('${{ steps.version.outputs.value }}' -eq '0.4.0') {
+            Copy-Item './FluentVantageToolbar-v${{ steps.version.outputs.value }}-installer-win-x64.exe' './FluentVantageToolbar-${{ steps.version.outputs.value }}-Setup-with-dotnet.exe'
+            gh release upload v${{ steps.version.outputs.value }} './FluentVantageToolbar-${{ steps.version.outputs.value }}-Setup-with-dotnet.exe'
+            if ($LASTEXITCODE -ne 0) { throw 'Legacy bridge upload failed' }
+          }
           gh release view v${{ steps.version.outputs.value }} --json body --jq .body > release-notes.md
           $body = Get-Content release-notes.md -Raw
           $body = $body.Replace('Self-contained downloads','Downloads').Replace('self-contained', 'bundled-runtime').Replace('Self-contained', 'Bundled-runtime')
