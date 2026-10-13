@@ -826,7 +826,7 @@ public sealed partial class MainWindow : Window
         if(next==null || next<=installed)return null;
         foreach(var asset in release.GetProperty("assets").EnumerateArray()) {
             var name=asset.GetProperty("name").GetString();
-            if(name!=$"FluentVantageToolbar-v{next.ToString(3)}-installer-win-x64.exe")continue;
+            if(name!=$"FluentVantageToolbar-v{next.ToString(3)}-installer-win-x64.exe" && name!=$"FluentVantageToolbar-{next.ToString(3)}-Setup{(bundled ? "-with-dotnet" : "")}.exe")continue;
             var url=asset.GetProperty("browser_download_url").GetString();
             if(Uri.TryCreate(url,UriKind.Absolute,out var uri) && uri.Scheme=="https" && uri.Host=="github.com" && uri.AbsolutePath.StartsWith("/MohamedElnaggar00/Fluent-Vantage-Toolbar/releases/download/",StringComparison.Ordinal))return url;
         }
