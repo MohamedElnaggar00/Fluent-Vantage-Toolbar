@@ -316,7 +316,7 @@ public sealed partial class MainWindow : Window
         var stack=new StackPanel { Spacing=10 };
         stack.Children.Add(Text(L.Ar ? "لون التطبيق" : "Accent color",14,true));
         var swatches=new StackPanel { Orientation=Orientation.Horizontal,Spacing=8 };
-        foreach(string hex in new[]{"#0078D4","#00A6A6","#744DA9","#D83B01","#C239B3","#107C10"}) {
+        foreach(string hex in new[]{"#0078D4","#00A6A6","#9CDA9B","#744DA9","#D83B01","#C239B3","#107C10"}) {
             var button=new Button { Width=40,Height=40,Padding=new Thickness(3),Background=new SolidColorBrush(ParseAccent(hex)!.Value),
                 BorderBrush=Primary,BorderThickness=new Thickness(settings.AccentColor==hex?3:0),Content=settings.AccentColor==hex ? "✓" : "",Foreground=new SolidColorBrush(Colors.White) };
             ToolTipService.SetToolTip(button,hex);
@@ -755,9 +755,9 @@ public sealed partial class MainWindow : Window
             if (!tileButtons.TryGetValue(id, out var button)) return;
             button.IsEnabled = supported && !preview;
             button.IsChecked = state ?? false;
-            if (button.Content is FontIcon glyph) glyph.Foreground = state == true ? (ParseAccent(settings.AccentColor).HasValue ? Rgb(255,255,255) : Rgb(20,55,27)) : Primary;
+            if (button.Content is FontIcon glyph) glyph.Foreground = state == true ? ((ParseAccent(settings.AccentColor).HasValue && !string.Equals(settings.AccentColor,"#9CDA9B",StringComparison.OrdinalIgnoreCase)) ? Rgb(255,255,255) : Rgb(20,55,27)) : Primary;
             if (id == "fn" && button.Content is Grid lockGrid) foreach (var child in lockGrid.Children) {
-                Brush ink = state == true ? (ParseAccent(settings.AccentColor).HasValue ? Rgb(255,255,255) : Rgb(20,55,27)) : Primary;
+                Brush ink = state == true ? ((ParseAccent(settings.AccentColor).HasValue && !string.Equals(settings.AccentColor,"#9CDA9B",StringComparison.OrdinalIgnoreCase)) ? Rgb(255,255,255) : Rgb(20,55,27)) : Primary;
                 if (child is Microsoft.UI.Xaml.Shapes.Path path) path.Stroke = ink;
                 if (child is Border outline) outline.BorderBrush = ink;
                 if (child is TextBlock fnLabel) fnLabel.Foreground = ink;
@@ -780,7 +780,7 @@ public sealed partial class MainWindow : Window
         Set("conserve", value.Mode == ChargeMode.Conservation, value.Mode.HasValue, L.T("tip.conserve"));
         Set("rapid", value.Mode == ChargeMode.Rapid, value.Mode.HasValue, L.T("tip.rapid"));
         Set("touchpad", value.TouchpadLocked.HasValue ? !value.TouchpadLocked.Value : null, value.TouchpadLocked.HasValue, L.T("tip.touchpad"));
-        var checkedInk=ParseAccent(settings.AccentColor).HasValue ? Rgb(255,255,255) : Rgb(20,55,27);
+        var checkedInk=(ParseAccent(settings.AccentColor).HasValue && !string.Equals(settings.AccentColor,"#9CDA9B",StringComparison.OrdinalIgnoreCase)) ? Rgb(255,255,255) : Rgb(20,55,27);
         if(tileButtons.TryGetValue("mic",out var microphone))microphone.Content=value.Muted==true ? MicOffIcon(checkedInk) : Glyph("\uE720",24);
         if(tileButtons.TryGetValue("touchpad",out var pad))pad.Content=TouchpadIcon(value.TouchpadLocked==true,value.TouchpadLocked==false ? checkedInk : Primary);
         if (tileButtons.TryGetValue("refresh", out var refreshButton) && refreshButton.Parent is StackPanel panel && panel.Children.Count > 1 && panel.Children[1] is TextBlock label)
