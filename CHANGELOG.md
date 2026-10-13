@@ -3,6 +3,7 @@
 ### Changes
 - Fix "Check for updates" failing with a connection error even when the internet works. The updater now recognizes the current release file names.
 - Add the battery green (#9CDA9B) as an accent color option.
+- Fix the window not appearing when opened from the tray icon after a restart or sign-in.
 
 ## 0.3.10
 
