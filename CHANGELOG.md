@@ -1,3 +1,11 @@
+## 0.3.10
+
+### Changes
+- Fix the window sometimes opening full-screen instead of its compact toolbar size after a restart or sign-in.
+
+### التغييرات
+- إصلاح ظهور النافذة أحيانًا بحجم الشاشة الكامل بدل حجمها المضغوط بعد إعادة التشغيل أو تسجيل الدخول.
+
 ## 0.3.9
 
 ### Changes
