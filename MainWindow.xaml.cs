@@ -242,7 +242,7 @@ public sealed partial class MainWindow : Window
         int generation=++animationGeneration;showingFlyout=true;
         try {
             SetCloaked(true);flyoutVisible=false;
-            view=target??"main";Render();await geometryReady;
+            view=target??"main";Render();await Task.WhenAny(geometryReady,Task.Delay(2500));
             var area=DisplayArea.GetFromWindowId(AppWindow.Id,DisplayAreaFallback.Nearest).WorkArea;
             int x=area.X+area.Width-AppWindow.Size.Width/2-12,y=area.Y+area.Height+4;
             if(tray.TryGetAnchor(out int anchorX,out int anchorY)){x=anchorX;y=anchorY;area=DisplayArea.GetFromPoint(new PointInt32(x,y),DisplayAreaFallback.Nearest).WorkArea;}
@@ -260,6 +260,9 @@ public sealed partial class MainWindow : Window
                 if(SystemBackdrop is not MicaBackdrop || Root.Background is not SolidColorBrush bg || bg.Color.A!=0)throw new InvalidOperationException("Mica obscured");
                 if(AppWindow.Position.Y+AppWindow.Size.Height>area.Y+area.Height-12)throw new InvalidOperationException("Taskbar gap lost");
             }
+        } catch(Exception ex) {
+            DiagnosticLog.Write("ShowFlyout failed: "+ex);
+            try{ if(!flyoutVisible){SetCloaked(false);Activate();SetForegroundWindow(hwnd);flyoutVisible=true;} }catch{}
         } finally {showingFlyout=false;}
     }
 
@@ -549,6 +552,13 @@ public sealed partial class MainWindow : Window
                 wanted=last.TransformToVisual(Root).TransformPoint(new Windows.Foundation.Point(0,ink)).Y-canvas.Margin.Top+24;
             }
             if(generation!=geometryGeneration)return;
+            // At logon the cloaked window may not be laid out yet, so the painted-ink measure can come back near zero.
+            // Never let that produce a tiny (invisible) window: fall back to the measured natural height, with a floor.
+            {
+                double natural=naturalHeight+Root.Padding.Top+Root.Padding.Bottom;
+                if(double.IsNaN(wanted)||double.IsInfinity(wanted)||wanted<natural*0.6)wanted=natural;
+                wanted=Math.Max(wanted,view=="main"?300:360);
+            }
             var work=DisplayArea.GetFromWindowId(AppWindow.Id,DisplayAreaFallback.Nearest).WorkArea;
             wanted=Math.Min(wanted,work.Height/scale-16);
             var desired=new SizeInt32((int)Math.Round(520*scale+frameWidthPixels),(int)Math.Round(wanted*scale+frameHeightPixels));
