@@ -1,3 +1,8 @@
+## 0.4.0
+
+### Changes
+- Fix "Check for updates" failing with a connection error even when the internet works. The updater now recognizes the current release file names.
+
 ## 0.3.10
 
 ### Changes
