@@ -90,6 +90,10 @@ jobs:
           }
           function Capture-Tray($name, $light) {
             Set-TaskbarTheme $light
+            # Promote the app's stable tray GUID so the glyph sits in the visible tray, not the overflow chevron.
+            $promote = 'HKCU:\Control Panel\NotifyIconSettings\{3F6E2A41-7C5B-4D2E-9A18-5B0C4D7E9F01}'
+            New-Item -Path $promote -Force | Out-Null
+            Set-ItemProperty $promote IsPromoted 1
             $path = Join-Path $PWD "$name.png"
             $p = Start-Process .\out\FluentLegionToolbar.exe -ArgumentList '--capture',"$path",'--tray-capture' -PassThru
             $clock = [Diagnostics.Stopwatch]::StartNew()
