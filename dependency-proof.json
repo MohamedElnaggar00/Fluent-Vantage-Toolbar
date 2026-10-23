@@ -1,0 +1,18 @@
+[
+  {
+    "ModuleName": "hostfxr.dll",
+    "FileName": "D:\\a\\Fluent-Vantage-Toolbar\\Fluent-Vantage-Toolbar\\publish\\hostfxr.dll"
+  },
+  {
+    "ModuleName": "coreclr.dll",
+    "FileName": "D:\\a\\Fluent-Vantage-Toolbar\\Fluent-Vantage-Toolbar\\publish\\coreclr.dll"
+  },
+  {
+    "ModuleName": "Microsoft.WindowsAppRuntime.dll",
+    "FileName": "D:\\a\\Fluent-Vantage-Toolbar\\Fluent-Vantage-Toolbar\\publish\\Microsoft.WindowsAppRuntime.dll"
+  },
+  {
+    "ModuleName": "Microsoft.WinUI.dll",
+    "FileName": "D:\\a\\Fluent-Vantage-Toolbar\\Fluent-Vantage-Toolbar\\publish\\Microsoft.WinUI.dll"
+  }
+]
