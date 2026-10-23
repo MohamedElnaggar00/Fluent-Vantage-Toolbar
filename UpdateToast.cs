@@ -114,10 +114,41 @@ sealed class UpdateToast : Window
     Button AddButton(string text, Action click, bool accent = false)
     {
         var button = new Button { Content = text, MinWidth = 96 };
-        if (accent) button.Style = (Style)Application.Current.Resources["AccentButtonStyle"];
+        if (accent)
+        {
+            button.Style = (Style)Application.Current.Resources["AccentButtonStyle"];
+            // Pin the accent on the element itself: the shared accent style's ThemeResource
+            // values do not reliably re-resolve app-level overrides in a new window.
+            var brush = (SolidColorBrush)Application.Current.Resources["AccentFillColorDefaultBrush"];
+            var c = brush.Color;
+            var hover = new SolidColorBrush(Scale(c, 0.88));
+            var pressed = new SolidColorBrush(Scale(c, 0.76));
+            var fg = new SolidColorBrush(Microsoft.UI.Colors.White);
+            button.Resources["AccentButtonBackground"] = brush;
+            button.Resources["AccentButtonBackgroundPointerOver"] = hover;
+            button.Resources["AccentButtonBackgroundPressed"] = pressed;
+            button.Resources["AccentButtonForeground"] = fg;
+            button.Resources["AccentButtonForegroundPointerOver"] = fg;
+            button.Resources["AccentButtonForegroundPressed"] = fg;
+            button.Resources["AccentButtonBorderBrush"] = brush;
+            button.Resources["AccentButtonBorderBrushPointerOver"] = hover;
+            button.Resources["AccentButtonBorderBrushPressed"] = pressed;
+            button.Tag = "accent";
+        }
         button.Click += (a, b) => click();
         _btns.Children.Add(button);
         return button;
+    }
+
+    static Windows.UI.Color Scale(Windows.UI.Color c, double f) =>
+        Windows.UI.Color.FromArgb(255, (byte)(c.R * f), (byte)(c.G * f), (byte)(c.B * f));
+
+    public Windows.UI.Color? PinnedAccentColor()
+    {
+        foreach (var child in _btns.Children)
+            if (child is Button { Tag: "accent" } b && b.Resources.TryGetValue("AccentButtonBackground", out var v) && v is SolidColorBrush sb)
+                return sb.Color;
+        return null;
     }
 
     void SetState(string state, string? detail = null)

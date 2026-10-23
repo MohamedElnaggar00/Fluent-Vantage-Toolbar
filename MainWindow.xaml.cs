@@ -1358,6 +1358,8 @@ public sealed partial class MainWindow : Window
         foreach(var toastState in new[]{"offer","downloading","ready","error"}) {
             using(var scope=new UpdateToastCaptureScope(new UpdateToast("9.0.0",previewAsset,"https://github.com/MohamedElnaggar00/Fluent-Vantage-Toolbar/releases/latest",Dark))) {
                 scope.Window.ShowToast();scope.Window.PreviewState(toastState);await Task.Delay(400);
+                var expectedAccent=ParseAccent(AppSettings.DefaultAccentColor)!.Value;
+                if(toastState!="downloading" && scope.Window.PinnedAccentColor()!=expectedAccent)throw new InvalidOperationException("Toast accent button lost the current accent colour");
                 await scope.Window.CaptureAsync(Path.Combine(dir,$"update-toast-{toastState}-"+name));
             }
         }
