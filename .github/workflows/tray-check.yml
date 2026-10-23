@@ -112,8 +112,8 @@ jobs:
             Start-Sleep -Seconds 4
             if (-not (Get-Process -Name explorer -ErrorAction SilentlyContinue)) { Start-Process explorer.exe; Start-Sleep -Seconds 6 }
           }
-          function Start-TrayApp($path) {
-            $p = Start-Process .\out\FluentLegionToolbar.exe -ArgumentList '--capture',"$path",'--tray-capture' -PassThru
+          function Start-TrayApp($path, $guidArg) {
+            $p = Start-Process .\out\FluentLegionToolbar.exe -ArgumentList '--capture',"$path",'--tray-capture','--tray-guid',"$guidArg" -PassThru
             $clock = [Diagnostics.Stopwatch]::StartNew()
             while (-not (Test-Path "$path.ready") -and -not $p.HasExited -and $clock.Elapsed.TotalSeconds -lt 100) { Start-Sleep -Milliseconds 300; $p.Refresh() }
             if (-not (Test-Path "$path.ready")) { if (Test-Path "$path.log") { Get-Content "$path.log" }; if ($p.HasExited) { "app exited early, code $($p.ExitCode)" }; Stop-Process $p.Id -Force -ErrorAction SilentlyContinue; throw "Tray capture not ready ($path)" }
@@ -125,11 +125,14 @@ jobs:
           }
           function Capture-Tray($name, $light) {
             Set-TaskbarTheme $light
-            $promote = 'HKCU:\Control Panel\NotifyIconSettings\{3F6E2A41-7C5B-4D2E-9A18-5B0C4D7E9F01}'
+            # Fresh GUID per phase: the shell poisons a GUID entry once an instance registered and
+            # exited, so each phase uses its own identity (production keeps the fixed GUID).
+            $phaseGuid = [guid]::NewGuid().ToString('B').ToUpper()
+            $promote = "HKCU:\Control Panel\NotifyIconSettings\$phaseGuid"
             New-Item -Path $promote -Force | Out-Null
             Set-ItemProperty $promote IsPromoted 1
             $path = Join-Path $PWD "$name.png"
-            $p = Start-TrayApp $path
+            $p = Start-TrayApp $path $phaseGuid
             $parts = (Get-Content "$path.anchor") -split ','
             $ax = [int]$parts[0]; $ay = [int]$parts[1]; $mode = $parts[2]; $icon = $parts[3]
             "$name anchor=$ax,$ay mode=$mode icon=$icon" | Add-Content tray-proof.txt
@@ -156,6 +159,7 @@ jobs:
               "$name visible=overflow anchor2=$qx,$qy minLum=$($lum[0]) maxLum=$($lum[1]) click=delivered" | Add-Content tray-proof.txt
             }
             Stop-TrayApp $p $path
+            Remove-Item $promote -Recurse -Force -ErrorAction SilentlyContinue
             if ($light -and $lum[0] -gt 100) { throw "Light taskbar has no dark tray glyph ($name)" }
             if (-not $light -and $lum[1] -lt 180) { throw "Dark taskbar has no white tray glyph ($name)" }
           }
@@ -164,11 +168,12 @@ jobs:
           # Unclean-exit reattach: kill an instance without NIM_DELETE, then a fresh instance must
           # register (ADD or MODIFY fallback), report a rect, and receive a click.
           $stale = Join-Path $PWD 'tray-stale.png'
-          $p1 = Start-TrayApp $stale
+          $staleGuid = [guid]::NewGuid().ToString('B').ToUpper()
+          $p1 = Start-TrayApp $stale $staleGuid
           Stop-Process $p1.Id -Force
           Start-Sleep -Seconds 2
           Remove-Item "$stale.ready","$stale.anchor" -ErrorAction SilentlyContinue
-          $p2 = Start-TrayApp $stale
+          $p2 = Start-TrayApp $stale $staleGuid
           $sp = (Get-Content "$stale.anchor") -split ','
           Send-Click ([int]$sp[0]) ([int]$sp[1])
           if (-not (Wait-File "$stale.interact" 10)) {

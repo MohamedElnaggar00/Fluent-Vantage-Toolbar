@@ -11,6 +11,9 @@ sealed class TrayIcon : IDisposable
     const uint NIF_MESSAGE = 1, NIF_ICON = 2, NIF_TIP = 4, NIF_INFO = 0x10, NIF_GUID = 0x20;
     // Stable identity: Windows remembers placement/promotion per GUID, so the icon keeps its tray position across restarts.
     static readonly Guid TrayGuid = new Guid("3F6E2A41-7C5B-4D2E-9A18-5B0C4D7E9F01");
+    /// <summary>Test-only override set before the first TrayIcon is created; production always uses TrayGuid.</summary>
+    public static Guid? OverrideGuid;
+    Guid IconGuid => OverrideGuid ?? TrayGuid;
 
     delegate IntPtr SubclassProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam, UIntPtr id, UIntPtr data);
 
@@ -43,7 +46,7 @@ sealed class TrayIcon : IDisposable
     {
         try
         {
-            var id = new NOTIFYICONIDENTIFIER { hWnd = _hwnd, uID = 1, guidItem = TrayGuid };
+            var id = new NOTIFYICONIDENTIFIER { hWnd = _hwnd, uID = 1, guidItem = IconGuid };
             id.cbSize = (uint)Marshal.SizeOf<NOTIFYICONIDENTIFIER>();
             if (Shell_NotifyIconGetRect(ref id, out var r) == 0 && r.right > r.left && r.bottom > r.top)
             {
@@ -99,7 +102,7 @@ sealed class TrayIcon : IDisposable
 
     NOTIFYICONDATA Data(uint flags)
     {
-        var d = new NOTIFYICONDATA { hWnd = _hwnd, uID = 1, uFlags = flags | NIF_GUID, uCallbackMessage = WM_TRAY, hIcon = _icon, szTip = _tip, szInfo = "", szInfoTitle = "", guidItem = TrayGuid };
+        var d = new NOTIFYICONDATA { hWnd = _hwnd, uID = 1, uFlags = flags | NIF_GUID, uCallbackMessage = WM_TRAY, hIcon = _icon, szTip = _tip, szInfo = "", szInfoTitle = "", guidItem = IconGuid };
         d.cbSize = (uint)Marshal.SizeOf<NOTIFYICONDATA>();
         return d;
     }
