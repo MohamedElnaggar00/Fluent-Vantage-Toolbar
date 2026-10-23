@@ -121,12 +121,55 @@ jobs:
             } }
             $crop.Dispose()
             "$name minLum=$([int]$minL) maxLum=$([int]$maxL)" | Add-Content tray-proof.txt
-            Stop-Process $p.Id -Force -ErrorAction SilentlyContinue
+            if (-not ('MouseOps' -as [type])) {
+              Add-Type @'
+          using System; using System.Runtime.InteropServices;
+          public class MouseOps {
+            [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
+            [DllImport("user32.dll")] public static extern void mouse_event(uint f, uint x, uint y, uint d, IntPtr e);
+          }
+          '@
+            }
+            [MouseOps]::SetCursorPos($ax, $ay) | Out-Null
+            Start-Sleep -Milliseconds 300
+            [MouseOps]::mouse_event(2, 0, 0, 0, [IntPtr]::Zero)
+            [MouseOps]::mouse_event(4, 0, 0, 0, [IntPtr]::Zero)
+            $clickClock = [Diagnostics.Stopwatch]::StartNew()
+            while (-not (Test-Path "$path.interact") -and $clickClock.Elapsed.TotalSeconds -lt 10) { Start-Sleep -Milliseconds 250 }
+            if (-not (Test-Path "$path.interact")) { throw "Tray icon did not receive the click at its reported rect ($name)" }
+            "$name click=delivered" | Add-Content tray-proof.txt
+            Set-Content "$path.done" 'done'
+            if (-not $p.WaitForExit(15000)) { Stop-Process $p.Id -Force -ErrorAction SilentlyContinue }
             if ($light -and $minL -gt 100) { throw "Light taskbar has no dark tray glyph ($name)" }
             if (-not $light -and $maxL -lt 180) { throw "Dark taskbar has no white tray glyph ($name)" }
           }
           Capture-Tray 'tray-light' $true
           Capture-Tray 'tray-dark' $false
+          # Unclean-exit reattach: kill an instance without NIM_DELETE, then a fresh instance must
+          # register (ADD or MODIFY fallback), report a rect, and receive a click.
+          $stale = Join-Path $PWD 'tray-stale.png'
+          $p1 = Start-Process .\out\FluentLegionToolbar.exe -ArgumentList '--capture',"$stale",'--tray-capture' -PassThru
+          $c1 = [Diagnostics.Stopwatch]::StartNew()
+          while (-not (Test-Path "$stale.ready") -and -not $p1.HasExited -and $c1.Elapsed.TotalSeconds -lt 100) { Start-Sleep -Milliseconds 300; $p1.Refresh() }
+          if (-not (Test-Path "$stale.ready")) { throw "Stale-phase first instance not ready" }
+          Stop-Process $p1.Id -Force
+          Start-Sleep -Seconds 2
+          Remove-Item "$stale.ready","$stale.anchor" -ErrorAction SilentlyContinue
+          $p2 = Start-Process .\out\FluentLegionToolbar.exe -ArgumentList '--capture',"$stale",'--tray-capture' -PassThru
+          $c2 = [Diagnostics.Stopwatch]::StartNew()
+          while (-not (Test-Path "$stale.ready") -and -not $p2.HasExited -and $c2.Elapsed.TotalSeconds -lt 100) { Start-Sleep -Milliseconds 300; $p2.Refresh() }
+          if (-not (Test-Path "$stale.ready")) { if (Test-Path "$stale.log") { Get-Content "$stale.log" }; throw "Tray icon did not re-register after unclean exit" }
+          $sp = (Get-Content "$stale.anchor") -split ','
+          [MouseOps]::SetCursorPos([int]$sp[0], [int]$sp[1]) | Out-Null
+          Start-Sleep -Milliseconds 300
+          [MouseOps]::mouse_event(2, 0, 0, 0, [IntPtr]::Zero)
+          [MouseOps]::mouse_event(4, 0, 0, 0, [IntPtr]::Zero)
+          $c3 = [Diagnostics.Stopwatch]::StartNew()
+          while (-not (Test-Path "$stale.interact") -and $c3.Elapsed.TotalSeconds -lt 10) { Start-Sleep -Milliseconds 250 }
+          if (-not (Test-Path "$stale.interact")) { throw "Re-registered tray icon did not receive the click" }
+          "tray-stale reattach=ok click=delivered" | Add-Content tray-proof.txt
+          Set-Content "$stale.done" 'done'
+          if (-not $p2.WaitForExit(15000)) { Stop-Process $p2.Id -Force -ErrorAction SilentlyContinue }
           Get-Content tray-proof.txt
       - name: Upgrade from published v0.4.0 keeps one install and settings
         shell: pwsh

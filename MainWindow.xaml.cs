@@ -1238,9 +1238,11 @@ public sealed partial class MainWindow : Window
             string chosen=Path.GetFileName(TrayIconPath());
             if(light && chosen!="tray-dark.ico")throw new InvalidOperationException("Light taskbar must get the dark glyph");
             if(!light && chosen!="tray-white.ico")throw new InvalidOperationException("Dark taskbar must get the white glyph");
+            tray.OnTrayButton = () => { try { File.WriteAllText(path+".interact","clicked"); } catch { } };
             File.WriteAllText(path+".anchor",$"{anchorX},{anchorY},{(light?"light":"dark")},{chosen}");
             File.WriteAllText(path+".ready","ready");
-            await Task.Delay(60000);Close();return;
+            for(int wait=0;wait<440 && !File.Exists(path+".done");wait++)await Task.Delay(250);
+            Close();return;
         }
         string dir = Path.GetDirectoryName(Path.GetFullPath(path)) ?? ".", name = Path.GetFileName(path);
         await geometryReady;await PresentPreparedAsync();SetCloaked(false);flyoutVisible=true;

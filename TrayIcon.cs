@@ -31,6 +31,8 @@ sealed class TrayIcon : IDisposable
     [DllImport("shell32.dll")] static extern int Shell_NotifyIconGetRect(ref NOTIFYICONIDENTIFIER id, out RECT r);
 
     public Func<bool>? IsDark;
+    /// <summary>Fired on any tray button press; used by capture tests to prove callback routing.</summary>
+    public Action? OnTrayButton;
     [DllImport("uxtheme.dll", EntryPoint="#135")] static extern int SetPreferredAppMode(int mode);
     [DllImport("uxtheme.dll", EntryPoint="#136")] static extern void FlushMenuThemes();
     public bool NativeTip = false;   // the custom hover card replaces the system tooltip
@@ -160,6 +162,7 @@ sealed class TrayIcon : IDisposable
         {
             uint ev = (uint)((long)l & 0xFFFF);
             if (GetCursorPos(out var lp)) { _lastX = lp.x; _lastY = lp.y; }
+            if (ev == WM_LBUTTONUP || ev == WM_RBUTTONUP) { try { OnTrayButton?.Invoke(); } catch { } }
             if (ev == WM_MOUSEMOVE) { try { OnHover?.Invoke(); } catch { } }
             else if (ev == WM_LBUTTONUP) _onClick();
             else if (ev == WM_RBUTTONUP)
