@@ -1241,7 +1241,13 @@ public sealed partial class MainWindow : Window
             tray.OnTrayButton = () => { try { File.WriteAllText(path+".interact","clicked"); } catch { } };
             File.WriteAllText(path+".anchor",$"{anchorX},{anchorY},{(light?"light":"dark")},{chosen}");
             File.WriteAllText(path+".ready","ready");
-            for(int wait=0;wait<440 && !File.Exists(path+".done");wait++)await Task.Delay(250);
+            for(int wait=0;wait<440 && !File.Exists(path+".done");wait++) {
+                await Task.Delay(250);
+                if(File.Exists(path+".query")) {
+                    try { File.Delete(path+".query"); } catch { }
+                    if(tray.TryGetAnchor(out int qx,out int qy))File.WriteAllText(path+".anchor2",$"{qx},{qy}");
+                }
+            }
             Close();return;
         }
         string dir = Path.GetDirectoryName(Path.GetFullPath(path)) ?? ".", name = Path.GetFileName(path);
