@@ -127,6 +127,7 @@ sealed class TrayIcon : IDisposable
         if (!_added) { var d = Data(0); Shell_NotifyIconW(NIM_DELETE, ref d); Add(); }
     }
     public bool IsAdded => _added;
+    public bool IconLoaded => _icon != IntPtr.Zero;
     public int LastAddError;
     public int LastModifyError;
 
