@@ -72,6 +72,7 @@ sealed class TrayIcon : IDisposable
     readonly Action<int> _onMenu;
     readonly Func<int, int, bool>? _onContext;
     public Action? OnHover;
+    public Action? OnSystemThemeChanged;
     (int id, string text)[] _items;
     public void SetItems((int id, string text)[] items) => _items = items;
     readonly SubclassProc _proc;
@@ -112,6 +113,23 @@ sealed class TrayIcon : IDisposable
         Shell_NotifyIconW(NIM_MODIFY, ref d);
     }
 
+    /// <summary>Swaps the tray icon image (e.g. dark glyph for a light taskbar) and refreshes the shell icon in place.</summary>
+    public void SetIcon(string icoPath)
+    {
+        try
+        {
+            int sz = GetSystemMetrics(49);
+            if (sz <= 0) sz = 16;
+            var next = LoadImageW(IntPtr.Zero, icoPath, 1, sz, sz, 0x10);
+            if (next == IntPtr.Zero) return;
+            var old = _icon;
+            _icon = next;
+            if (old != IntPtr.Zero) DestroyIcon(old);
+            if (_added) { var d = Data(NIF_ICON); Shell_NotifyIconW(NIM_MODIFY, ref d); }
+        }
+        catch { }
+    }
+
     public void SetTip(string tip)
     {
         if (!NativeTip) return;
@@ -140,6 +158,7 @@ sealed class TrayIcon : IDisposable
             return IntPtr.Zero;
         }
         if (_taskbarCreated != 0 && msg == _taskbarCreated) { Add(); }
+        if (msg == 0x001A) { try { OnSystemThemeChanged?.Invoke(); } catch { } } // WM_SETTINGCHANGE: Windows theme may have flipped
         return DefSubclassProc(h, msg, w, l);
     }
 

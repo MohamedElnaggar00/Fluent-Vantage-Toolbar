@@ -1,3 +1,10 @@
+## 1.0.0
+
+### Changes
+- Update from inside the app: when a newer release exists, the app downloads the matching installer itself with live progress and a cancel button, verifies its size and SHA-256 checksum, and runs it only after "Install now". If the download or verification fails, nothing is run and the release page opens as a fallback.
+- The automatic update notice now offers the same in-app download instead of only a download link.
+- The tray icon follows the Windows taskbar theme: a dark glyph on a light taskbar and a white glyph on a dark one, updating live when Windows switches modes.
+
 ## 0.4.0
 
 ### Changes

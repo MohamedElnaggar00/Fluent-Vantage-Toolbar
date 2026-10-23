@@ -43,12 +43,14 @@ public sealed partial class MainWindow : Window
     bool warrantyLoading;
     bool busy, dialogOpen, exiting, checkingUpdates;
     readonly List<Button> updateButtons = new();
+    readonly List<Button> installButtons = new();
     readonly List<TextBlock> updateResults = new();
     readonly List<HyperlinkButton> updateLinks = new();
     string manualUpdateState = "idle";
     string? manualUpdateUrl, manualUpdateVersion;
+    UpdateAsset? manualUpdateAsset;
+    UpdateToast? updateToast;
     readonly CancellationTokenSource updateLifetime=new();
-    UpdateNoticeWindow? updateNotice;
     bool flyoutVisible, showingFlyout, reorderMode, reordering;
     StackPanel? reorderRows;
     int reorderPresses,reorderMoves,reorderReleases;
@@ -129,11 +131,12 @@ public sealed partial class MainWindow : Window
         Root.Background=new SolidColorBrush(Colors.Transparent);
         ApplyTheme();
 
-        tray = new TrayIcon(hwnd, Path.Combine(AppContext.BaseDirectory, "app.ico"), TrayItems(), () => ShowFlyout(null, true), OnTrayMenu);
+        tray = new TrayIcon(hwnd, TrayIconPath(), TrayItems(), () => ShowFlyout(null, true), OnTrayMenu);
         tray.IsDark=()=>Dark;
+        tray.OnSystemThemeChanged=()=>tray.SetIcon(TrayIconPath());
         tray.NativeTip = true; tray.SetTip("Fluent Vantage Toolbar");
         AppWindow.Closing += (_, e) => { if (!exiting && !preview) { e.Cancel = true; HideFlyout(); } };
-        Closed += (_, _) => { updateLifetime.Cancel();updateNotice?.Close();contextMenu?.Close();timer.Stop(); tray.Dispose(); };
+        Closed += (_, _) => { updateLifetime.Cancel();try{updateToast?.Close();}catch{}contextMenu?.Close();timer.Stop(); tray.Dispose(); };
         Activated += (_, e) => { if (e.WindowActivationState == WindowActivationState.Deactivated && !preview && !dialogOpen && !pageNavigating && !showingFlyout && !reordering) HideFlyout(); };
         Root.ActualThemeChanged += (_, _) => { if (!preview) Render(); };
         timer.Tick += async (_, _) => { if (flyoutVisible && view == "main") await Refresh(); };
@@ -800,6 +803,14 @@ public sealed partial class MainWindow : Window
 
     void OpenDashboard(){dashboard=new DeviceDashboardWindow(settings.Theme,current,preview);Navigate("device");}
 
+    /// <summary>Windows taskbar theme ("Windows mode"), independent of the app's own theme setting. The white glyph vanishes on a light taskbar.</summary>
+    internal static bool TaskbarIsLight()
+    {
+        try { return Microsoft.Win32.Registry.GetValue(@"HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize", "SystemUsesLightTheme", 0) is int v && v == 1; }
+        catch { return false; }
+    }
+    internal static string TrayIconPath() => Path.Combine(AppContext.BaseDirectory, TaskbarIsLight() ? "tray-dark.ico" : "tray-white.ico");
+
     string UpdateLabel => L.Ar ? "التحقق من التحديثات" : "Check for updates";
     UIElement UpdateCard(bool compact = false)
     {
@@ -807,8 +818,12 @@ public sealed partial class MainWindow : Window
         if(!compact) stack.Children.Add(Text(L.Ar ? "التحديثات" : "Updates",16,true));
         if(!compact) stack.Children.Add(Text(L.Ar ? "اضغط الزر للتحقق من التحديثات الآن." : "Press the button to check for updates now.",13,false,SecondaryText));
         if(!compact) stack.Children.Add(Text((L.Ar ? "الإصدار الحالي: " : "Current version: ")+"v"+(typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? "0.0.0"),13,false,SecondaryText));
+        var buttonsRow=new StackPanel { Orientation=Orientation.Horizontal, Spacing=8 };
         var button=new Button { Content=UpdateLabel, IsEnabled=!checkingUpdates, HorizontalAlignment=compact ? HorizontalAlignment.Stretch : HorizontalAlignment.Left };
-        button.Click+=async (_,_)=>await CheckForUpdatesAsync();updateButtons.Add(button);stack.Children.Add(button);
+        button.Click+=async (_,_)=>await CheckForUpdatesAsync();updateButtons.Add(button);buttonsRow.Children.Add(button);
+        var install=new Button { Content=L.Ar ? "تنزيل وتثبيت" : "Download and install", HorizontalAlignment=compact ? HorizontalAlignment.Stretch : HorizontalAlignment.Left, Visibility=Visibility.Collapsed };
+        install.Click+=(_,_)=>InstallUpdate();installButtons.Add(install);buttonsRow.Children.Add(install);
+        stack.Children.Add(buttonsRow);
         var result=Text("",13);result.TextWrapping=TextWrapping.Wrap;if(compact) result.TextAlignment=TextAlignment.Center;updateResults.Add(result);stack.Children.Add(result);
         var link=new HyperlinkButton { Content=L.Ar ? "فتح صفحة التنزيل" : "Open download page", HorizontalAlignment=compact ? HorizontalAlignment.Center : HorizontalAlignment.Left };
         updateLinks.Add(link);stack.Children.Add(link);RefreshUpdateCards();
@@ -825,20 +840,28 @@ public sealed partial class MainWindow : Window
             _ => ""
         };
         foreach(var button in updateButtons){button.IsEnabled=!checkingUpdates;button.Content=UpdateLabel;}
+        foreach(var install in installButtons){install.Content=L.Ar ? "تنزيل وتثبيت" : "Download and install";install.Visibility=manualUpdateAsset==null ? Visibility.Collapsed : Visibility.Visible;}
         foreach(var text in updateResults)text.Text=result;
         foreach(var link in updateLinks){link.NavigateUri=manualUpdateUrl==null ? null : new Uri(manualUpdateUrl);link.Visibility=manualUpdateUrl==null ? Visibility.Collapsed : Visibility.Visible;}
     }
     static Version? ReleaseVersion(string? tag) => Version.TryParse(tag?.TrimStart('v','V'),out var version) ? version : null;
-    static string? UpdateDownload(System.Text.Json.JsonElement release, Version installed,bool bundled=true)
+    static string? UpdateDownload(System.Text.Json.JsonElement release, Version installed,bool bundled=true) => UpdateAssetFor(release,installed,bundled)?.Url;
+    internal static UpdateAsset? UpdateAssetFor(System.Text.Json.JsonElement release, Version installed,bool bundled=true)
     {
         if(release.GetProperty("draft").GetBoolean() || release.GetProperty("prerelease").GetBoolean())return null;
         var next=ReleaseVersion(release.GetProperty("tag_name").GetString());
         if(next==null || next<=installed)return null;
         foreach(var asset in release.GetProperty("assets").EnumerateArray()) {
             var name=asset.GetProperty("name").GetString();
+            // Accept the current installer name and the pre-0.4.0 legacy name, so older installs can still self-update.
             if(name!=$"FluentVantageToolbar-v{next.ToString(3)}-installer-win-x64.exe" && name!=$"FluentVantageToolbar-{next.ToString(3)}-Setup{(bundled ? "-with-dotnet" : "")}.exe")continue;
             var url=asset.GetProperty("browser_download_url").GetString();
-            if(Uri.TryCreate(url,UriKind.Absolute,out var uri) && uri.Scheme=="https" && uri.Host=="github.com" && uri.AbsolutePath.StartsWith("/MohamedElnaggar00/Fluent-Vantage-Toolbar/releases/download/",StringComparison.Ordinal))return url;
+            if(Uri.TryCreate(url,UriKind.Absolute,out var uri) && uri.Scheme=="https" && uri.Host=="github.com" && uri.AbsolutePath.StartsWith("/MohamedElnaggar00/Fluent-Vantage-Toolbar/releases/download/",StringComparison.Ordinal)) {
+                long size=asset.TryGetProperty("size",out var sz) && sz.ValueKind==System.Text.Json.JsonValueKind.Number ? sz.GetInt64() : 0;
+                string? sha=null;
+                if(asset.TryGetProperty("digest",out var dg) && dg.ValueKind==System.Text.Json.JsonValueKind.String && (dg.GetString() ?? "").StartsWith("sha256:",StringComparison.OrdinalIgnoreCase))sha=dg.GetString()!.Substring(7);
+                return new UpdateAsset(url!,name!,size,sha);
+            }
         }
         throw new InvalidOperationException("New release has no installer matching this build flavor.");
     }
@@ -867,30 +890,40 @@ public sealed partial class MainWindow : Window
             response.EnsureSuccessStatusCode();
             using var json=System.Text.Json.JsonDocument.Parse(await response.Content.ReadAsStringAsync(updateLifetime.Token));
             var installed=ReleaseVersion(typeof(MainWindow).Assembly.GetName().Version?.ToString(3)) ?? new Version(0,0,0);
-            var url=UpdateDownload(json.RootElement,installed,InstalledBundled);
+            var asset=UpdateAssetFor(json.RootElement,installed,InstalledBundled);
             var tag=json.RootElement.GetProperty("tag_name").GetString();
-            if(url==null || !settings.AutoCheckUpdates || exiting || tag==settings.LastNotifiedUpdate)return;
-            ShowUpdateNotice(tag ?? "",url);
+            if(asset==null || !settings.AutoCheckUpdates || exiting || tag==settings.LastNotifiedUpdate)return;
+            ShowUpdateNotice(tag ?? "",asset);
             settings.LastNotifiedUpdate=tag;settings.Save();
         } catch(OperationCanceledException) { }
         catch(Exception error) { DiagnosticLog.Write("Automatic update check failed: "+error.Message); }
         finally {checkingUpdates=false;}
     }
-    void ShowUpdateNotice(string version,string url)
+    void ShowUpdateNotice(string version,UpdateAsset asset)
     {
-        updateNotice?.Close();
-        updateNotice=new UpdateNoticeWindow(version,url,L.Ar,Dark,preview);
+        try{updateToast?.Close();}catch{}
+        updateToast=new UpdateToast(version.TrimStart('v','V'),asset,"https://github.com/MohamedElnaggar00/Fluent-Vantage-Toolbar/releases/latest",Dark);
         if(!preview) {
             tray.Notify(L.Ar ? "يتوفر تحديث جديد" : "Update available",$"Fluent Vantage Toolbar {version}");
-            updateNotice.ShowNotice();
+            updateToast.ShowToast();
         }
+    }
+
+    /// <summary>Opens the update toast from a manual check and starts the in-app download. The installer still runs only after "Install now".</summary>
+    void InstallUpdate()
+    {
+        if(manualUpdateAsset==null || preview)return;
+        try{updateToast?.Close();}catch{}
+        updateToast=new UpdateToast((manualUpdateVersion ?? "").TrimStart('v','V'),manualUpdateAsset,"https://github.com/MohamedElnaggar00/Fluent-Vantage-Toolbar/releases/latest",Dark);
+        updateToast.ShowToast();
+        updateToast.Begin();
     }
 
     async Task CheckForUpdatesAsync()
     {
         if(checkingUpdates || preview)return;
         checkingUpdates=true;
-        manualUpdateState="checking";manualUpdateUrl=null;RefreshUpdateCards();
+        manualUpdateState="checking";manualUpdateUrl=null;manualUpdateAsset=null;RefreshUpdateCards();
         try {
             using var http=new System.Net.Http.HttpClient { Timeout=TimeSpan.FromSeconds(20) };
             http.DefaultRequestHeaders.UserAgent.ParseAdd("FluentVantageToolbar/"+(typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? "0.0.0"));
@@ -899,10 +932,10 @@ public sealed partial class MainWindow : Window
             response.EnsureSuccessStatusCode();
             using var json=System.Text.Json.JsonDocument.Parse(await response.Content.ReadAsStringAsync());
             var installed=ReleaseVersion(typeof(MainWindow).Assembly.GetName().Version?.ToString(3)) ?? new Version(0,0,0);
-            var url=UpdateDownload(json.RootElement,installed,InstalledBundled);
-            manualUpdateUrl=url;
+            manualUpdateAsset=UpdateAssetFor(json.RootElement,installed,InstalledBundled);
+            manualUpdateUrl=manualUpdateAsset?.Url;
             manualUpdateVersion=json.RootElement.GetProperty("tag_name").GetString();
-            manualUpdateState=url==null ? "current" : "available";
+            manualUpdateState=manualUpdateUrl==null ? "current" : "available";
         } catch(Exception error) {
             DiagnosticLog.Write("Update check failed: "+error.Message);
             manualUpdateState="error";
@@ -1191,6 +1224,19 @@ public sealed partial class MainWindow : Window
         if(!unknownRejected)throw new InvalidOperationException("Unknown thermal mode accepted");
         // Deterministic render fixture, clearly labelled as preview. Hardware services and the network are never called.
         int index = Array.IndexOf(args, "--capture"); string path = args[index + 1];
+        if(args.Contains("--tray-capture")) {
+            // Real taskbar evidence: report the live shell icon anchor and the icon file this build chose for the current Windows taskbar theme.
+            bool anchored=false;int anchorX=0,anchorY=0;
+            for(int attempt=0;attempt<60 && !anchored;attempt++){await Task.Delay(250);anchored=tray.TryGetAnchor(out anchorX,out anchorY);}
+            if(!anchored)throw new InvalidOperationException("Tray icon anchor unavailable");
+            bool light=TaskbarIsLight();
+            string chosen=Path.GetFileName(TrayIconPath());
+            if(light && chosen!="tray-dark.ico")throw new InvalidOperationException("Light taskbar must get the dark glyph");
+            if(!light && chosen!="tray-white.ico")throw new InvalidOperationException("Dark taskbar must get the white glyph");
+            File.WriteAllText(path+".anchor",$"{anchorX},{anchorY},{(light?"light":"dark")},{chosen}");
+            File.WriteAllText(path+".ready","ready");
+            await Task.Delay(60000);Close();return;
+        }
         string dir = Path.GetDirectoryName(Path.GetFullPath(path)) ?? ".", name = Path.GetFileName(path);
         await geometryReady;await PresentPreparedAsync();SetCloaked(false);flyoutVisible=true;
         current = new DeviceState(60, true, false, ChargeMode.Conservation, false, false, "Visual fixture", [], true, 2, 165, [60, 165],ThermalMode.Balanced);
@@ -1198,7 +1244,8 @@ public sealed partial class MainWindow : Window
         warranty = new WarrantyResult(new DateTime(2022, 7, 29), new DateTime(2023, 7, 28), null);
         if(args.Contains("--updates-only")) {
             int stateIndex=Array.IndexOf(args,"--update-state");manualUpdateState=args[stateIndex+1];checkingUpdates=manualUpdateState=="checking";
-            manualUpdateVersion="v9.0.0";manualUpdateUrl=manualUpdateState=="available" ? "https://github.com/MohamedElnaggar00/Fluent-Vantage-Toolbar/releases/latest" : null;
+            manualUpdateVersion="v9.0.0";manualUpdateUrl=manualUpdateState=="available" ? "https://github.com/MohamedElnaggar00/Fluent-Vantage-Toolbar/releases/download/v9.0.0/FluentVantageToolbar-v9.0.0-installer-win-x64.exe" : null;
+            manualUpdateAsset=manualUpdateState=="available" ? new UpdateAsset(manualUpdateUrl!,"FluentVantageToolbar-v9.0.0-installer-win-x64.exe",0,null) : null;
             view=args.Contains("--updates-settings") ? "settings" : "about";Render();await geometryReady;
             if(body.Content is ScrollViewer updateScroll)updateScroll.ChangeView(null,args.Contains("--updates-top") ? 0 : updateScroll.ScrollableHeight,null,true);
             await Task.Delay(700);File.WriteAllText(path+".ready","ready");await Task.Delay(60000);Close();return;
@@ -1212,13 +1259,14 @@ public sealed partial class MainWindow : Window
         }
         foreach(var state in new[] { "current", "available", "checking", "error" }) {
             manualUpdateState=state;checkingUpdates=state=="checking";manualUpdateVersion="v9.0.0";
-            manualUpdateUrl=state=="available" ? "https://github.com/MohamedElnaggar00/Fluent-Vantage-Toolbar/releases/latest" : null;
+            manualUpdateUrl=state=="available" ? "https://github.com/MohamedElnaggar00/Fluent-Vantage-Toolbar/releases/download/v9.0.0/FluentVantageToolbar-v9.0.0-installer-win-x64.exe" : null;
+            manualUpdateAsset=state=="available" ? new UpdateAsset(manualUpdateUrl!,"FluentVantageToolbar-v9.0.0-installer-win-x64.exe",0,null) : null;
             view="about";Render();await geometryReady;
             if(body.Content is ScrollViewer updateScroll)updateScroll.ChangeView(null,updateScroll.ScrollableHeight,null,true);
             await Task.Delay(500);
             await SaveImage(Path.Combine(dir,"updates-"+state+"-"+name));
         }
-        checkingUpdates=false;manualUpdateState="idle";manualUpdateUrl=null;
+        checkingUpdates=false;manualUpdateState="idle";manualUpdateUrl=null;manualUpdateAsset=null;
         // Verify dynamic height with a single tile row and then with no quick tiles.
         foreach (var count in new[] { 5, 0 }) {
             settings.HiddenTiles = Tiles.Skip(count).Select(t => t.Id).ToList();
@@ -1306,9 +1354,31 @@ public sealed partial class MainWindow : Window
         }
         settings.AccentColor=AppSettings.DefaultAccentColor;ApplyAccent();
         if(ParseAccent("#12ABEF") is not {} parsed || parsed.R!=0x12 || ParseAccent("invalid")!=null)throw new InvalidOperationException("Accent parsing failed");
-        using(var notice=new UpdateNoticeCaptureScope(new UpdateNoticeWindow("v9.0.0","https://github.com/MohamedElnaggar00/Fluent-Vantage-Toolbar/releases/download/v9.0.0/FluentVantageToolbar-9.0.0-Setup.exe",L.Ar,Dark,true))) {
-            notice.Window.ShowNotice();await Task.Delay(400);
-            await notice.Window.CaptureAsync(Path.Combine(dir,"update-notice-"+name));
+        var previewAsset=new UpdateAsset("https://github.com/MohamedElnaggar00/Fluent-Vantage-Toolbar/releases/download/v9.0.0/FluentVantageToolbar-v9.0.0-installer-win-x64.exe","FluentVantageToolbar-v9.0.0-installer-win-x64.exe",0,null);
+        foreach(var toastState in new[]{"offer","downloading","ready","error"}) {
+            using(var scope=new UpdateToastCaptureScope(new UpdateToast("9.0.0",previewAsset,"https://github.com/MohamedElnaggar00/Fluent-Vantage-Toolbar/releases/latest",Dark))) {
+                scope.Window.ShowToast();scope.Window.PreviewState(toastState);await Task.Delay(400);
+                await scope.Window.CaptureAsync(Path.Combine(dir,$"update-toast-{toastState}-"+name));
+            }
+        }
+        if(args.Contains("--update-live")) {
+            // Runs the real toast against the published release, so the download actually happens and the ready state is real.
+            using var http=new System.Net.Http.HttpClient { Timeout=TimeSpan.FromSeconds(20) };
+            http.DefaultRequestHeaders.UserAgent.ParseAdd("FluentVantageToolbar-ci");
+            using var liveJson=System.Text.Json.JsonDocument.Parse(await http.GetStringAsync("https://api.github.com/repos/MohamedElnaggar00/Fluent-Vantage-Toolbar/releases/latest"));
+            var liveAsset=UpdateAssetFor(liveJson.RootElement,new Version(0,3,9),true);
+            if(liveAsset==null)throw new InvalidOperationException("Live update preview found no published installer");
+            var liveTag=(liveJson.RootElement.GetProperty("tag_name").GetString() ?? "v0.0.0").TrimStart('v','V');
+            using(var scope=new UpdateToastCaptureScope(new UpdateToast(liveTag,liveAsset,"https://github.com/MohamedElnaggar00/Fluent-Vantage-Toolbar/releases/latest",Dark))) {
+                scope.Window.ShowToast();await Task.Delay(400);
+                await scope.Window.CaptureAsync(Path.Combine(dir,"update-toast-live-offer-"+name));
+                scope.Window.Begin();
+                var wait=0;
+                while(!File.Exists(Path.Combine(UpdateInstaller.Dir,liveAsset.Name)) && wait<180000){await Task.Delay(1000);wait+=1000;}
+                if(!File.Exists(Path.Combine(UpdateInstaller.Dir,liveAsset.Name)))throw new InvalidOperationException("Live update download did not finish");
+                await Task.Delay(600);
+                await scope.Window.CaptureAsync(Path.Combine(dir,"update-toast-live-ready-"+name));
+            }
         }
         if(args.Contains("--interactive")) {
             settings.HiddenTiles=Tiles.Skip(5).Select(t=>t.Id).ToList();settings.ShowWarranty=true;
@@ -1350,43 +1420,9 @@ public sealed partial class MainWindow : Window
 }
 
 
-internal sealed class UpdateNoticeCaptureScope : IDisposable
+internal sealed class UpdateToastCaptureScope : IDisposable
 {
-    public UpdateNoticeWindow Window {get;}
-    public UpdateNoticeCaptureScope(UpdateNoticeWindow window){Window=window;}
+    public UpdateToast Window {get;}
+    public UpdateToastCaptureScope(UpdateToast window){Window=window;}
     public void Dispose()=>Window.Close();
-}
-internal sealed class UpdateNoticeWindow : Window
-{
-    readonly Grid root=new();
-    public UpdateNoticeWindow(string version,string url,bool arabic,bool dark,bool fixture)
-    {
-        Title="Fluent Vantage Toolbar";ExtendsContentIntoTitleBar=true;
-        root.Background=new SolidColorBrush(dark?Windows.UI.Color.FromArgb(255,32,32,32):Windows.UI.Color.FromArgb(255,243,243,243));
-        root.RequestedTheme=dark?ElementTheme.Dark:ElementTheme.Light;root.FlowDirection=arabic?FlowDirection.RightToLeft:FlowDirection.LeftToRight;
-        root.Padding=new Thickness(20);Content=root;
-        var stack=new StackPanel{Spacing=12};root.Children.Add(stack);
-        stack.Children.Add(new TextBlock{Text=arabic?"يتوفر تحديث جديد":"Update available",FontSize=18,FontWeight=Microsoft.UI.Text.FontWeights.SemiBold});
-        stack.Children.Add(new TextBlock{Text=$"Fluent Vantage Toolbar {version}",TextWrapping=TextWrapping.Wrap,FontSize=14});
-        stack.Children.Add(new TextBlock{Text=arabic?"التنزيل المباشر للنسخة المطابقة لتثبيتك. لن يتم التثبيت تلقائياً.":"Direct download for your installed build. Nothing installs automatically.",TextWrapping=TextWrapping.Wrap,FontSize=12});
-        var buttons=new StackPanel{Orientation=Orientation.Horizontal,Spacing=10};
-        var download=new Button{Content=arabic?"تحميل":"Download"};download.Click+=(_,_)=>{if(!fixture){try{Process.Start(new ProcessStartInfo(url){UseShellExecute=true});Close();}catch(Exception error){DiagnosticLog.Write("Update link failed: "+error.Message);}}};
-        var later=new Button{Content=arabic?"لاحقاً":"Later"};later.Click+=(_,_)=>Close();buttons.Children.Add(download);buttons.Children.Add(later);stack.Children.Add(buttons);
-        if(AppWindow.Presenter is OverlappedPresenter presenter){presenter.SetBorderAndTitleBar(true,false);presenter.IsResizable=false;presenter.IsMaximizable=false;presenter.IsMinimizable=false;presenter.IsAlwaysOnTop=true;}
-        double scale=GetScale();AppWindow.ResizeClient(new SizeInt32((int)(370*scale),(int)(230*scale)));AppWindow.IsShownInSwitchers=false;
-    }
-    [StructLayout(LayoutKind.Sequential)] struct NativePoint { public int X,Y; }
-    [DllImport("user32.dll")] static extern int GetSystemMetrics(int index);
-    [DllImport("user32.dll")] static extern bool ClientToScreen(IntPtr hwnd,ref NativePoint point);
-    [DllImport("user32.dll")] static extern bool SetCursorPos(int x,int y);
-    [DllImport("user32.dll")] static extern void mouse_event(uint flags,uint dx,uint dy,uint data,UIntPtr extra);
-    [DllImport("user32.dll")] static extern uint GetDpiForWindow(IntPtr hwnd);
-    double GetScale()=>Math.Max(1,GetDpiForWindow(WinRT.Interop.WindowNative.GetWindowHandle(this))/96d);
-    public void ShowNotice(){var work=DisplayArea.Primary.WorkArea;AppWindow.Move(new PointInt32(work.X+work.Width-AppWindow.Size.Width-16,work.Y+work.Height-AppWindow.Size.Height-16));AppWindow.Show();}
-    public async Task CaptureAsync(string path) {
-        var bitmap=new Microsoft.UI.Xaml.Media.Imaging.RenderTargetBitmap();await bitmap.RenderAsync(root);
-        var buffer=await bitmap.GetPixelsAsync();using var reader=Windows.Storage.Streams.DataReader.FromBuffer(buffer);var pixels=new byte[buffer.Length];reader.ReadBytes(pixels);
-        using var stream=File.Open(path,FileMode.Create).AsRandomAccessStream();var encoder=await Windows.Graphics.Imaging.BitmapEncoder.CreateAsync(Windows.Graphics.Imaging.BitmapEncoder.PngEncoderId,stream);
-        encoder.SetPixelData(Windows.Graphics.Imaging.BitmapPixelFormat.Bgra8,Windows.Graphics.Imaging.BitmapAlphaMode.Premultiplied,(uint)bitmap.PixelWidth,(uint)bitmap.PixelHeight,96,96,pixels);await encoder.FlushAsync();
-    }
 }
