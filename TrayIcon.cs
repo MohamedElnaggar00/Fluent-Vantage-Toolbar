@@ -104,6 +104,10 @@ sealed class TrayIcon : IDisposable
 
     void Add() { var d = Data(NIF_MESSAGE | NIF_ICON | NIF_TIP); _added = Shell_NotifyIconW(NIM_ADD, ref d); }
 
+    /// <summary>Retries registration when the shell was not ready at startup (e.g. explorer restarting).</summary>
+    public void EnsureAdded() { if (!_added) Add(); }
+    public bool IsAdded => _added;
+
     /// <summary>Shows a Windows notification (balloon/toast) from the tray icon.</summary>
     public void Notify(string title, string text)
     {

@@ -1227,7 +1227,12 @@ public sealed partial class MainWindow : Window
         if(args.Contains("--tray-capture")) {
             // Real taskbar evidence: report the live shell icon anchor and the icon file this build chose for the current Windows taskbar theme.
             bool anchored=false;int anchorX=0,anchorY=0;
-            for(int attempt=0;attempt<60 && !anchored;attempt++){await Task.Delay(250);anchored=tray.TryGetAnchor(out anchorX,out anchorY);}
+            for(int attempt=0;attempt<320 && !anchored;attempt++) {
+                await Task.Delay(250);
+                anchored=tray.TryGetAnchor(out anchorX,out anchorY);
+                if(!anchored)tray.EnsureAdded();
+                if(attempt%20==19)File.AppendAllText(path+".log",$"attempt {attempt} added={tray.IsAdded} anchored={anchored} light={TaskbarIsLight()} icon={Path.GetFileName(TrayIconPath())}\n");
+            }
             if(!anchored)throw new InvalidOperationException("Tray icon anchor unavailable");
             bool light=TaskbarIsLight();
             string chosen=Path.GetFileName(TrayIconPath());
