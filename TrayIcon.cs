@@ -102,7 +102,14 @@ sealed class TrayIcon : IDisposable
         return d;
     }
 
-    void Add() { var d = Data(NIF_MESSAGE | NIF_ICON | NIF_TIP); _added = Shell_NotifyIconW(NIM_ADD, ref d); }
+    void Add()
+    {
+        var d = Data(NIF_MESSAGE | NIF_ICON | NIF_TIP);
+        _added = Shell_NotifyIconW(NIM_ADD, ref d);
+        // With a GUID identity the shell can still hold the previous registration after an
+        // unclean exit, which makes NIM_ADD fail; NIM_MODIFY re-attaches it to this window.
+        if (!_added) { d = Data(NIF_MESSAGE | NIF_ICON | NIF_TIP); _added = Shell_NotifyIconW(NIM_MODIFY, ref d); }
+    }
 
     /// <summary>Retries registration when the shell was not ready at startup (e.g. explorer restarting).</summary>
     public void EnsureAdded() { if (!_added) Add(); }
