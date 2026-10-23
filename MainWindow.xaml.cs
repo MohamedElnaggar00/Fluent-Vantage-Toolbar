@@ -1231,7 +1231,7 @@ public sealed partial class MainWindow : Window
                 await Task.Delay(250);
                 anchored=tray.TryGetAnchor(out anchorX,out anchorY);
                 if(!anchored)tray.EnsureAdded();
-                if(attempt%20==19)File.AppendAllText(path+".log",$"attempt {attempt} added={tray.IsAdded} anchored={anchored} light={TaskbarIsLight()} icon={Path.GetFileName(TrayIconPath())}\n");
+                if(attempt%20==19)File.AppendAllText(path+".log",$"attempt {attempt} added={tray.IsAdded} addErr={tray.LastAddError} modErr={tray.LastModifyError} anchored={anchored} light={TaskbarIsLight()} icon={Path.GetFileName(TrayIconPath())}\n");
             }
             if(!anchored)throw new InvalidOperationException("Tray icon anchor unavailable");
             bool light=TaskbarIsLight();

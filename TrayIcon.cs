@@ -108,14 +108,24 @@ sealed class TrayIcon : IDisposable
     {
         var d = Data(NIF_MESSAGE | NIF_ICON | NIF_TIP);
         _added = Shell_NotifyIconW(NIM_ADD, ref d);
+        if (!_added) LastAddError = Marshal.GetLastWin32Error();
         // With a GUID identity the shell can still hold the previous registration after an
         // unclean exit, which makes NIM_ADD fail; NIM_MODIFY re-attaches it to this window.
-        if (!_added) { d = Data(NIF_MESSAGE | NIF_ICON | NIF_TIP); _added = Shell_NotifyIconW(NIM_MODIFY, ref d); }
+        if (!_added) { d = Data(NIF_MESSAGE | NIF_ICON | NIF_TIP); _added = Shell_NotifyIconW(NIM_MODIFY, ref d); if (!_added) LastModifyError = Marshal.GetLastWin32Error(); }
     }
 
     /// <summary>Retries registration when the shell was not ready at startup (e.g. explorer restarting).</summary>
-    public void EnsureAdded() { if (!_added) Add(); }
+    public void EnsureAdded()
+    {
+        if (_added) return;
+        Add();
+        // The shell can hold a stale or known-but-unregistered GUID entry that makes both ADD and
+        // MODIFY fail; deleting it and adding fresh recovers that state.
+        if (!_added) { var d = Data(0); Shell_NotifyIconW(NIM_DELETE, ref d); Add(); }
+    }
     public bool IsAdded => _added;
+    public int LastAddError;
+    public int LastModifyError;
 
     /// <summary>Shows a Windows notification (balloon/toast) from the tray icon.</summary>
     public void Notify(string title, string text)
